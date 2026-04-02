@@ -21,6 +21,16 @@ export function useOrgAuth() {
     email: null
   });
 
+  const clearServerSessionCookie = useCallback(async () => {
+    try {
+      await fetch("/api/auth/logout", {
+        method: "POST"
+      });
+    } catch {
+      // Ignore network failures and continue with local session cleanup.
+    }
+  }, []);
+
   const validate = useCallback(async () => {
     setState((prev) => ({ ...prev, loading: true }));
 
@@ -39,6 +49,7 @@ export function useOrgAuth() {
     });
 
     if (response.status === 403) {
+      await clearServerSessionCookie();
       await supabaseClient.auth.signOut();
       setState({ loading: false, authorized: false, email: null });
       router.replace("/unauthorized");
@@ -58,17 +69,18 @@ export function useOrgAuth() {
     if (currentPath === "/login" || currentPath === "/auth/verify") {
       router.replace(data.systemPath ?? SYSTEM_HOME_PATH);
     }
-  }, [router]);
+  }, [clearServerSessionCookie, router]);
 
   useEffect(() => {
     void validate();
   }, [validate]);
 
   const signOut = useCallback(async () => {
+    await clearServerSessionCookie();
     await supabaseClient.auth.signOut();
     setState({ loading: false, authorized: false, email: null });
     router.replace("/login");
-  }, [router]);
+  }, [clearServerSessionCookie, router]);
 
   return {
     loading: state.loading,
