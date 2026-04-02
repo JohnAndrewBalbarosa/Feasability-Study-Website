@@ -1,0 +1,1 @@
+export const SYSTEM_HOME_PATH = "/analytics";
