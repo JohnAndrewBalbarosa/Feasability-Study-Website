@@ -6,6 +6,7 @@ export type StoredMaterialRequirement = {
 
 export type StoredProcurementData = {
   material: string;
+  unit: string;
   totalAvailable: number;
   totalProcurementCost: number;
 };
@@ -18,6 +19,7 @@ export type InferredVariableCost = {
 
 type ProcurementAggregate = {
   material: string;
+  unit: string;
   totalAvailable: number;
   totalProcurementCost: number;
   costPerUnit: number;
@@ -143,17 +145,30 @@ export function loadProcurementData(): StoredProcurementData[] {
   }
 
   const parsed = parseJsonArray<StoredProcurementData>(storage.getItem(PROCUREMENT_DATA_KEY));
-  return parsed.filter((row) => {
-    return (
-      typeof row?.material === "string" &&
-      typeof row?.totalAvailable === "number" &&
-      typeof row?.totalProcurementCost === "number" &&
-      Number.isFinite(row.totalAvailable) &&
-      Number.isFinite(row.totalProcurementCost) &&
-      row.totalAvailable > 0 &&
-      row.totalProcurementCost >= 0
-    );
-  });
+  return parsed
+    .map((row) => {
+      if (
+        typeof row?.material !== "string" ||
+        typeof row?.totalAvailable !== "number" ||
+        typeof row?.totalProcurementCost !== "number" ||
+        !Number.isFinite(row.totalAvailable) ||
+        !Number.isFinite(row.totalProcurementCost) ||
+        row.totalAvailable <= 0 ||
+        row.totalProcurementCost < 0
+      ) {
+        return null;
+      }
+
+      const unit = typeof (row as { unit?: unknown }).unit === "string" ? String((row as { unit?: unknown }).unit).trim() : "unit";
+
+      return {
+        material: row.material,
+        unit: unit || "unit",
+        totalAvailable: row.totalAvailable,
+        totalProcurementCost: row.totalProcurementCost
+      } satisfies StoredProcurementData;
+    })
+    .filter((row): row is StoredProcurementData => row !== null);
 }
 
 export function buildProcurementCostPerUnitMap(rows: StoredProcurementData[]): Map<string, ProcurementAggregate> {
@@ -161,6 +176,7 @@ export function buildProcurementCostPerUnitMap(rows: StoredProcurementData[]): M
     string,
     {
       material: string;
+      unit: string;
       totalAvailable: number;
       totalProcurementCost: number;
     }
@@ -174,6 +190,7 @@ export function buildProcurementCostPerUnitMap(rows: StoredProcurementData[]): M
 
     const current = aggregateMap.get(key) ?? {
       material: row.material.trim(),
+      unit: row.unit.trim() || "unit",
       totalAvailable: 0,
       totalProcurementCost: 0
     };
@@ -191,6 +208,7 @@ export function buildProcurementCostPerUnitMap(rows: StoredProcurementData[]): M
 
     result.set(key, {
       material: value.material,
+      unit: value.unit,
       totalAvailable: value.totalAvailable,
       totalProcurementCost: value.totalProcurementCost,
       costPerUnit: value.totalProcurementCost / value.totalAvailable

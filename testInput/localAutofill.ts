@@ -97,14 +97,14 @@ const TEST_MATERIAL_REQUIREMENTS: StoredMaterialRequirement[] = [
 ];
 
 const TEST_PROCUREMENT_DATA: StoredProcurementData[] = [
-  { material: "Flour", totalAvailable: 100, totalProcurementCost: 4500 },
-  { material: "Sugar", totalAvailable: 80, totalProcurementCost: 5200 },
-  { material: "Yeast", totalAvailable: 10, totalProcurementCost: 1800 },
-  { material: "Oil", totalAvailable: 120, totalProcurementCost: 9600 },
-  { material: "Cocoa", totalAvailable: 25, totalProcurementCost: 6250 },
-  { material: "Coffee Beans", totalAvailable: 30, totalProcurementCost: 10200 },
-  { material: "Milk", totalAvailable: 100, totalProcurementCost: 9000 },
-  { material: "Cup", totalAvailable: 1000, totalProcurementCost: 2500 }
+  { material: "Flour", unit: "kg", totalAvailable: 100, totalProcurementCost: 4500 },
+  { material: "Sugar", unit: "kg", totalAvailable: 80, totalProcurementCost: 5200 },
+  { material: "Yeast", unit: "kg", totalAvailable: 10, totalProcurementCost: 1800 },
+  { material: "Oil", unit: "L", totalAvailable: 120, totalProcurementCost: 9600 },
+  { material: "Cocoa", unit: "kg", totalAvailable: 25, totalProcurementCost: 6250 },
+  { material: "Coffee Beans", unit: "kg", totalAvailable: 30, totalProcurementCost: 10200 },
+  { material: "Milk", unit: "L", totalAvailable: 100, totalProcurementCost: 9000 },
+  { material: "Cup", unit: "pcs", totalAvailable: 1000, totalProcurementCost: 2500 }
 ];
 
 export function shouldAutofillLocalInput(): boolean {
