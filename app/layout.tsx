@@ -7,7 +7,7 @@ const headingFont = Space_Grotesk({ subsets: ["latin"], variable: "--font-headin
 const bodyFont = IBM_Plex_Serif({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-body" });
 
 export const metadata: Metadata = {
-  title: "Wilson Procurement Intelligence",
+  title: "N.E.W Procurement Intelligence",
   description: "Procurement-to-sales dashboard powered by Next.js + Supabase"
 };
 

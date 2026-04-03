@@ -1,6 +1,9 @@
 "use client";
 
+import { useRef } from "react";
+
 import UserErrorPanel from "@/components/UserErrorPanel";
+import { useGsapPageReveal } from "@/hooks/useGsapPageReveal";
 import { useMaterialsActions } from "./handlers/useMaterialsActions";
 import { useMaterialsWorkspaceState } from "./hooks/useMaterialsWorkspaceState";
 import MaterialRequirementsSection from "./components/MaterialRequirementsSection";
@@ -8,6 +11,9 @@ import ProcurementSection from "./components/ProcurementSection";
 import ValidationSection from "./components/ValidationSection";
 
 export default function MaterialsWorkspace() {
+  const pageRef = useRef<HTMLElement>(null);
+  useGsapPageReveal(pageRef);
+
   const state = useMaterialsWorkspaceState();
   const actions = useMaterialsActions({
     nextMaterialId: state.nextMaterialId,
@@ -33,7 +39,7 @@ export default function MaterialsWorkspace() {
   }
 
   return (
-    <main className="page-shell">
+    <main ref={pageRef} className="page-shell">
       <section className="hero">
         <h1>{state.lockedMode ? "LOCKED PAGE" : "Material Requirements"}</h1>
         <p>
@@ -44,10 +50,11 @@ export default function MaterialsWorkspace() {
           <a href="/">{state.lockedMode ? "Unlocked Page" : "Summary Dashboard"}</a>
           <a href="/materials">{state.lockedMode ? "Locked Page" : "Material Requirements"}</a>
           <a href="/analytics">Detailed Analytics</a>
+          <a href="/about">About Developer</a>
           <button type="button" onClick={state.toggleLockMode} style={{ maxWidth: "220px", marginLeft: "auto" }}>
             {state.lockedMode ? "Disable Lock" : "Enable Lock"}
           </button>
-          <button type="button" onClick={state.signOut} style={{ maxWidth: "220px" }}>
+          <button type="button" onClick={state.signOut} style={{ width: "fit-content", maxWidth: "none", whiteSpace: "nowrap" }}>
             Sign Out ({state.email})
           </button>
         </div>

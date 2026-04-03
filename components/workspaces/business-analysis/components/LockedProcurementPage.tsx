@@ -1,3 +1,7 @@
+import { useRef } from "react";
+
+import { useGsapPageReveal } from "@/hooks/useGsapPageReveal";
+
 import type { ProcurementRow } from "../types";
 
 type LockedProcurementPageProps = {
@@ -21,8 +25,11 @@ export default function LockedProcurementPage({
   onAddProcurementRow,
   onGoToStep3
 }: LockedProcurementPageProps) {
+  const pageRef = useRef<HTMLElement>(null);
+  useGsapPageReveal(pageRef);
+
   return (
-    <main className="page-shell">
+    <main ref={pageRef} className="page-shell">
       <section className="hero">
         <h1>UNLOCKED PAGE</h1>
         <p>Lock mode is active. This first page now serves as the editable Procurement page.</p>
@@ -30,10 +37,11 @@ export default function LockedProcurementPage({
           <a href="/">Unlocked Page</a>
           <a href="/materials">Locked Page</a>
           <a href="/analytics">Detailed Analytics</a>
+          <a href="/about">About Developer</a>
           <button type="button" onClick={onToggleLockMode} style={{ maxWidth: "220px", marginLeft: "auto" }}>
             Disable Lock
           </button>
-          <button type="button" onClick={onSignOut} style={{ maxWidth: "220px" }}>
+          <button type="button" onClick={onSignOut} style={{ width: "fit-content", maxWidth: "none", whiteSpace: "nowrap" }}>
             Sign Out ({email})
           </button>
         </div>

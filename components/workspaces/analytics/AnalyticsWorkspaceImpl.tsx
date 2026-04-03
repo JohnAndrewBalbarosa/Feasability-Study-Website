@@ -1,6 +1,9 @@
 "use client";
 
+import { useRef } from "react";
+
 import UserErrorPanel from "@/components/UserErrorPanel";
+import { useGsapPageReveal } from "@/hooks/useGsapPageReveal";
 import { useAnalyticsActions } from "./handlers/useAnalyticsActions";
 import { useAnalyticsWorkspaceState } from "./hooks/useAnalyticsWorkspaceState";
 import AnalyticsTable from "./components/AnalyticsTable";
@@ -8,6 +11,9 @@ import AnalyticsTotalsCard from "./components/AnalyticsTotalsCard";
 import DeleteRecordsModal from "./components/DeleteRecordsModal";
 
 export default function AnalyticsPage() {
+  const pageRef = useRef<HTMLElement>(null);
+  useGsapPageReveal(pageRef);
+
   const state = useAnalyticsWorkspaceState();
   const actions = useAnalyticsActions({ records: state.records, setRecords: state.setRecords, setError: state.setError });
 
@@ -26,7 +32,7 @@ export default function AnalyticsPage() {
   }
 
   return (
-    <main className="page-shell">
+    <main ref={pageRef} className="page-shell">
       <section className="hero">
         <h1>Detailed Analytics</h1>
         <p>Supabase basis records are shown below by date and product. Green rows indicate profit or break-even, and red rows indicate loss.</p>
@@ -35,7 +41,8 @@ export default function AnalyticsPage() {
           <a href="/materials">{state.lockedMode ? "Locked Page" : "Material Requirements"}</a>
           <a href="/analytics">Detailed Analytics</a>
           <a href="/logs">Transaction Logs</a>
-          <button type="button" onClick={state.signOut} style={{ maxWidth: "180px" }}>
+          <a href="/about">About Developer</a>
+          <button type="button" onClick={state.signOut} style={{ width: "fit-content", maxWidth: "none", whiteSpace: "nowrap" }}>
             Sign Out ({state.email})
           </button>
         </div>

@@ -1,14 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import UserErrorPanel from "@/components/UserErrorPanel";
 import { resolveSystemPath } from "@/lib/authRoutes";
 import { getSessionAuthHeaders } from "@/lib/authClient";
 import { supabaseClient } from "@/lib/supabaseClient";
+import { useGsapPageReveal } from "@/hooks/useGsapPageReveal";
 
 export default function LoginPage() {
+  const pageRef = useRef<HTMLElement>(null);
+  useGsapPageReveal(pageRef);
+
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -87,9 +91,9 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="page-shell">
+    <main ref={pageRef} className="page-shell">
       <section className="hero">
-        <h1>Wilson Procurement Intelligence</h1>
+        <h1>N.E.W Procurement Intelligence</h1>
         <p>Exclusive access for authorized organization accounts.</p>
       </section>
 

@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import UserErrorPanel from "@/components/UserErrorPanel";
 import { useOrgAuth } from "@/hooks/useOrgAuth";
 import { getSessionAuthHeaders } from "@/lib/authClient";
+import { useGsapPageReveal } from "@/hooks/useGsapPageReveal";
 
 type TransactionLog = {
   id: string;
@@ -24,6 +25,9 @@ function formatDate(value: string): string {
 }
 
 export default function LogsWorkspace() {
+  const pageRef = useRef<HTMLElement>(null);
+  useGsapPageReveal(pageRef);
+
   const { loading: authLoading, authorized, email, signOut } = useOrgAuth();
   const [logs, setLogs] = useState<TransactionLog[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -94,7 +98,7 @@ export default function LogsWorkspace() {
   }
 
   return (
-    <main className="page-shell">
+    <main ref={pageRef} className="page-shell">
       <section className="hero">
         <h1>Basis Transaction Logs</h1>
         <p>Creation and deletion logs for basis records are listed below.</p>
@@ -103,7 +107,8 @@ export default function LogsWorkspace() {
           <a href="/materials">Material Requirements</a>
           <a href="/analytics">Detailed Analytics</a>
           <a href="/logs">Transaction Logs</a>
-          <button type="button" onClick={signOut} style={{ maxWidth: "180px" }}>
+          <a href="/about">About Developer</a>
+          <button type="button" onClick={signOut} style={{ width: "fit-content", maxWidth: "none", whiteSpace: "nowrap" }}>
             Sign Out ({email})
           </button>
         </div>

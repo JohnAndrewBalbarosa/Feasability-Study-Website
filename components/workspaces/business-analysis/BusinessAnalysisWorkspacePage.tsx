@@ -1,7 +1,10 @@
 "use client";
 
+import { useRef } from "react";
+
 import { useOrgAuth } from "@/hooks/useOrgAuth";
 import UserErrorPanel from "@/components/UserErrorPanel";
+import { useGsapPageReveal } from "@/hooks/useGsapPageReveal";
 import { STEP_TITLES } from "./constants";
 import BusinessHero from "./components/BusinessHero";
 import LockedProcurementPage from "./components/LockedProcurementPage";
@@ -19,6 +22,8 @@ import { useLatestSnapshotPrefill } from "./hooks/useLatestSnapshotPrefill";
 export default function BusinessAnalysisWorkspace() {
   const { loading: authLoading, authorized, email, signOut } = useOrgAuth();
   const state = useBusinessAnalysisState();
+  const pageRef = useRef<HTMLElement>(null);
+  useGsapPageReveal(pageRef, [state.currentStep]);
 
   useBusinessAnalysisStorageEffects({
     products: state.products,
@@ -125,7 +130,7 @@ export default function BusinessAnalysisWorkspace() {
   }
 
   return (
-    <main className="page-shell">
+    <main ref={pageRef} className="page-shell">
       <BusinessHero email={email} onToggleLockMode={saveHandlers.toggleLockMode} onSignOut={signOut} />
       <section className="card" style={{ marginTop: "1.25rem" }}>
         <StepNavigator

@@ -1,4 +1,4 @@
-# Wilson Procurement Intelligence (Closed-Loop v2)
+# N.E.W Procurement Intelligence (Closed-Loop v2)
 
 A deterministic procurement-to-sales intelligence system where break-even is the entry point and every downstream decision is traceable.
 
