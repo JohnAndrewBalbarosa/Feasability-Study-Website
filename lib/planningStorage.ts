@@ -39,6 +39,16 @@ function getStorage(): Storage | null {
   return window.localStorage;
 }
 
+export type { StoredBusinessCostInput, StoredBusinessProductInput } from "./businessAnalysisSessionStorage";
+export {
+  loadBusinessAnalysisCostInputs,
+  loadBusinessAnalysisCurrentStep,
+  loadBusinessAnalysisProductInputs,
+  saveBusinessAnalysisCostInputs,
+  saveBusinessAnalysisCurrentStep,
+  saveBusinessAnalysisProductInputs
+} from "./businessAnalysisSessionStorage";
+
 function notifyPlanningDataUpdated(): void {
   if (typeof window === "undefined") {
     return;

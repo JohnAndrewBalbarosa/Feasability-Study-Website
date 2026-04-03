@@ -1,7 +1,14 @@
 import { useEffect } from "react";
 
 import { getSessionAuthHeaders } from "@/lib/authClient";
-import { saveMaterialRequirements, saveProcurementData } from "@/lib/planningStorage";
+import {
+  loadBusinessAnalysisCostInputs,
+  loadBusinessAnalysisProductInputs,
+  loadMaterialRequirements,
+  loadProcurementData,
+  saveMaterialRequirements,
+  saveProcurementData
+} from "@/lib/planningStorage";
 
 import type { LatestBusinessSnapshotResponse, ProcurementRow } from "../types";
 import { mapCostRowsFromSnapshot, mapMaterialsFromSnapshot, mapProcurementRowsFromSnapshot, mapProductsFromSnapshot } from "../selectors/snapshotMappers";
@@ -51,14 +58,19 @@ export function useLatestSnapshotPrefill({
           return;
         }
 
+        const hasSessionProductDrafts = loadBusinessAnalysisProductInputs().length > 0;
+        const hasSessionCostDrafts = loadBusinessAnalysisCostInputs().length > 0;
+        const hasLocalProcurementDrafts = loadProcurementData().length > 0;
+        const hasLocalMaterialDrafts = loadMaterialRequirements().length > 0;
+
         const productsFromSupabase = mapProductsFromSnapshot(payload);
-        if (productsFromSupabase.length > 0) {
+        if (!hasSessionProductDrafts && productsFromSupabase.length > 0) {
           setProducts(productsFromSupabase);
           setNextProductId(productsFromSupabase.length + 1);
         }
 
         const costRowsFromSupabase = mapCostRowsFromSnapshot(payload);
-        if (costRowsFromSupabase.length > 0) {
+        if (!hasSessionCostDrafts && costRowsFromSupabase.length > 0) {
           const budgetRow = costRowsFromSupabase.find((row) => row.isBudget);
           const nonBudgetRows = costRowsFromSupabase.filter((row) => !row.isBudget);
           setCostRows([...nonBudgetRows, budgetRow ?? { id: "budget", costName: "Budget (overall constraint)", amount: "", isBudget: true }]);
@@ -66,7 +78,7 @@ export function useLatestSnapshotPrefill({
         }
 
         const procurementFromSupabase = mapProcurementRowsFromSnapshot(payload);
-        if (procurementFromSupabase.length > 0) {
+        if (!hasLocalProcurementDrafts && procurementFromSupabase.length > 0) {
           setProcurementRows(procurementFromSupabase);
           setNextProcurementId(procurementFromSupabase.length + 1);
           saveProcurementData(
@@ -80,7 +92,7 @@ export function useLatestSnapshotPrefill({
         }
 
         const materialsFromSupabase = mapMaterialsFromSnapshot(payload);
-        if (materialsFromSupabase.length > 0) {
+        if (!hasLocalMaterialDrafts && materialsFromSupabase.length > 0) {
           saveMaterialRequirements(materialsFromSupabase);
         }
       } catch {

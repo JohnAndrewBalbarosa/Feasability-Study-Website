@@ -26,10 +26,17 @@ export default function BusinessAnalysisWorkspace() {
   useGsapPageReveal(pageRef, [state.currentStep]);
 
   useBusinessAnalysisStorageEffects({
+    currentStep: state.currentStep,
     products: state.products,
+    costRows: state.costRows,
     procurementRows: state.procurementRows,
+    setCurrentStep: state.setCurrentStep,
+    setProducts: state.setProducts,
+    setCostRows: state.setCostRows,
     hasLoadedProcurementFromStorage: state.hasLoadedProcurementFromStorage,
     setProcurementRows: state.setProcurementRows,
+    setNextProductId: state.setNextProductId,
+    setNextCostId: state.setNextCostId,
     setNextProcurementId: state.setNextProcurementId,
     setHasLoadedProcurementFromStorage: state.setHasLoadedProcurementFromStorage,
     setPlanningDataVersion: state.setPlanningDataVersion,

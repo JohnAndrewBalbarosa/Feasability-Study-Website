@@ -9,14 +9,25 @@ import {
 } from "@/lib/planningStorage";
 import { isLocksDisabledOverride, PLANNING_LOCKS_UPDATED_EVENT } from "@/lib/pageLocks";
 
+import {
+  usePersistBusinessAnalysisSessionDrafts,
+  useRestoreBusinessAnalysisSessionDrafts
+} from "./useBusinessAnalysisSessionDraftEffects";
 import { toNumber } from "../formatters";
-import type { ProcurementRow, ProductRow } from "../types";
+import type { CostRow, ProcurementRow, ProductRow } from "../types";
 
 type Params = {
+  currentStep: number;
   products: ProductRow[];
+  costRows: CostRow[];
   procurementRows: ProcurementRow[];
+  setCurrentStep: (value: React.SetStateAction<number>) => void;
+  setProducts: (value: React.SetStateAction<ProductRow[]>) => void;
+  setCostRows: (value: React.SetStateAction<CostRow[]>) => void;
   hasLoadedProcurementFromStorage: boolean;
   setProcurementRows: (value: React.SetStateAction<ProcurementRow[]>) => void;
+  setNextProductId: (value: React.SetStateAction<number>) => void;
+  setNextCostId: (value: React.SetStateAction<number>) => void;
   setNextProcurementId: (value: React.SetStateAction<number>) => void;
   setHasLoadedProcurementFromStorage: (value: boolean) => void;
   setPlanningDataVersion: (value: React.SetStateAction<number>) => void;
@@ -24,15 +35,31 @@ type Params = {
 };
 
 export function useBusinessAnalysisStorageEffects({
+  currentStep,
   products,
+  costRows,
   procurementRows,
+  setCurrentStep,
+  setProducts,
+  setCostRows,
   hasLoadedProcurementFromStorage,
   setProcurementRows,
+  setNextProductId,
+  setNextCostId,
   setNextProcurementId,
   setHasLoadedProcurementFromStorage,
   setPlanningDataVersion,
   setLocksDisabledByUser
 }: Params) {
+  useRestoreBusinessAnalysisSessionDrafts({
+    hasLoadedProcurementFromStorage,
+    setCurrentStep,
+    setProducts,
+    setCostRows,
+    setNextProductId,
+    setNextCostId
+  });
+
   useEffect(() => {
     if (hasLoadedProcurementFromStorage) {
       return;
@@ -84,6 +111,8 @@ export function useBusinessAnalysisStorageEffects({
     const productNames = Array.from(new Set(products.map((product) => product.productName.trim()).filter((name) => name.length > 0)));
     saveBusinessAnalysisProducts(productNames);
   }, [products]);
+
+  usePersistBusinessAnalysisSessionDrafts({ currentStep, products, costRows });
 
   useEffect(() => {
     const handlePlanningDataUpdate = () => {
