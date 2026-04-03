@@ -1,5 +1,1 @@
-import AnalyticsWorkspace from "@/components/workspaces/AnalyticsWorkspace";
-
-export default function AnalyticsPage() {
-  return <AnalyticsWorkspace />;
-}
+export { default } from "@/components/workspaces/analytics/AnalyticsWorkspaceImpl";

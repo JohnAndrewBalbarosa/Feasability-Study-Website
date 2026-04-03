@@ -1,5 +1,1 @@
-import BusinessAnalysisWorkspace from "../components/workspaces/BusinessAnalysisWorkspace";
-
-export default function HomePage() {
-  return <BusinessAnalysisWorkspace />;
-}
+export { default } from "@/components/workspaces/business-analysis/BusinessAnalysisWorkspacePage";
