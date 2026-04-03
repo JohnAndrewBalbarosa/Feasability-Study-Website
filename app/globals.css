@@ -26,6 +26,9 @@ body {
 body {
   color: var(--ink);
   font-family: var(--font-body), Georgia, serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
   background-color: var(--paper);
   background-image:
     linear-gradient(0deg, rgba(0, 0, 0, 0.08) 1px, transparent 1px),
@@ -50,7 +53,7 @@ a {
 .page-shell {
   max-width: 1160px;
   margin: 0 auto;
-  padding: 2rem 1.25rem 4rem;
+  padding: 2rem max(1rem, env(safe-area-inset-left)) 4rem max(1rem, env(safe-area-inset-right));
 }
 
 .hero {
@@ -68,6 +71,20 @@ a {
 .hero p {
   max-width: 700px;
   line-height: 1.45;
+  font-size: clamp(0.95rem, 0.4vw + 0.9rem, 1.06rem);
+}
+
+.hero h1 {
+  font-size: clamp(1.45rem, 2.6vw + 0.9rem, 2.2rem);
+  line-height: 1.14;
+}
+
+.card h2 {
+  font-size: clamp(1.1rem, 1.2vw + 0.8rem, 1.55rem);
+}
+
+.card h3 {
+  font-size: clamp(1rem, 0.85vw + 0.78rem, 1.28rem);
 }
 
 .grid {
@@ -253,6 +270,11 @@ button:hover {
   text-transform: uppercase;
 }
 
+.nav a,
+.nav button {
+  touch-action: manipulation;
+}
+
 .nav button {
   width: auto;
   padding: 0.45rem 0.7rem;
@@ -413,7 +435,114 @@ button:disabled {
   }
 
   .chart-wrap svg {
+    min-width: 520px;
+    height: auto;
+  }
+}
+
+@media (max-width: 960px) {
+  .page-shell {
+    padding-top: 1.2rem;
+    padding-bottom: 2rem;
+  }
+
+  .hero {
+    padding: 1.4rem;
+  }
+
+  .card {
+    padding: 0.85rem;
+  }
+
+  .ops-table {
+    min-width: 760px;
+  }
+}
+
+@media (max-width: 640px) {
+  body {
+    background-size: 22px 22px;
+  }
+
+  .page-shell {
+    padding-top: 0.85rem;
+  }
+
+  .hero {
+    border-width: 2px;
+    box-shadow: 4px 4px 0 #101010;
+    padding: 1rem;
+  }
+
+  .nav {
+    gap: 0.5rem;
+  }
+
+  .nav a,
+  .nav button {
+    font-size: 0.78rem;
+    padding: 0.4rem 0.55rem;
+  }
+
+  .card {
+    border-width: 2px;
+    box-shadow: 4px 4px 0 #101010;
+  }
+
+  .table-wrap {
+    border-width: 2px;
+    box-shadow: 3px 3px 0 #101010;
+  }
+
+  .ops-table {
     min-width: 640px;
+  }
+
+  .ops-table th,
+  .ops-table td {
+    padding: 0.52rem;
+    font-size: 0.84rem;
+  }
+
+  input,
+  button,
+  select,
+  textarea {
+    padding: 0.5rem 0.6rem;
+    font-size: 0.92rem;
+  }
+}
+
+@media (max-width: 430px) {
+  .hero {
+    padding: 0.85rem;
+  }
+
+  .hero h1 {
+    letter-spacing: -0.015em;
+  }
+
+  .nav a,
+  .nav button {
+    font-size: 0.74rem;
+  }
+
+  .ops-table {
+    min-width: 560px;
+  }
+
+  .chart-wrap svg {
+    min-width: 460px;
+  }
+
+  .line-legend,
+  .analytics-legend {
+    gap: 0.55rem;
+  }
+
+  .analytics-legend-item {
+    font-size: 0.78rem;
+    padding: 0.25rem 0.5rem;
   }
 }
 
