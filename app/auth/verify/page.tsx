@@ -3,7 +3,7 @@
 import { Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-import { SYSTEM_HOME_PATH } from "@/lib/authRoutes";
+import { resolveSystemPath } from "@/lib/authRoutes";
 import { getSessionAuthHeaders } from "@/lib/authClient";
 import { supabaseClient } from "@/lib/supabaseClient";
 
@@ -47,7 +47,7 @@ function AuthVerifyContent() {
       }
 
       const data = (await response.json()) as { systemPath?: string };
-      router.replace(data.systemPath ?? SYSTEM_HOME_PATH);
+      router.replace(resolveSystemPath(data.systemPath));
     };
 
     void verify();

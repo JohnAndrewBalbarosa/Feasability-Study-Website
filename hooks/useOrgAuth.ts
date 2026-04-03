@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { getSessionAuthHeaders } from "@/lib/authClient";
-import { SYSTEM_HOME_PATH } from "@/lib/authRoutes";
+import { resolveSystemPath } from "@/lib/authRoutes";
 import { supabaseClient } from "@/lib/supabaseClient";
 
 type AuthState = {
@@ -67,7 +67,7 @@ export function useOrgAuth() {
 
     const currentPath = window.location.pathname;
     if (currentPath === "/login" || currentPath === "/auth/verify") {
-      router.replace(data.systemPath ?? SYSTEM_HOME_PATH);
+      router.replace(resolveSystemPath(data.systemPath));
     }
   }, [clearServerSessionCookie, router]);
 

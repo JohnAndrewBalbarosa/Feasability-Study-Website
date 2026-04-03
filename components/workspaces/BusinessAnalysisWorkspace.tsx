@@ -4,12 +4,18 @@ import { useEffect, useMemo, useState } from "react";
 
 import { useOrgAuth } from "@/hooks/useOrgAuth";
 import UserErrorPanel from "@/components/UserErrorPanel";
+import { getSessionAuthHeaders } from "@/lib/authClient";
 import {
   PLANNING_DATA_UPDATED_EVENT,
   computeInferredVariableCostByProduct,
+  loadProcurementData,
+  loadMaterialRequirements,
   normalizePlanningLabel,
-  saveBusinessAnalysisProducts
+  saveBusinessAnalysisProducts,
+  saveProcurementData,
+  type StoredProcurementData
 } from "@/lib/planningStorage";
+import { disableAllPageLocks, enableAllPageLocks, isLocksDisabledOverride, PLANNING_LOCKS_UPDATED_EVENT } from "@/lib/pageLocks";
 import { getLocalBusinessAutofillSeed, seedLocalPlanningData, shouldAutofillLocalInput } from "@/testInput/localAutofill";
 
 type ProductRow = {
@@ -19,9 +25,6 @@ type ProductRow = {
   sellingPrice: string;
   variableCost: string;
   unitsSoldToday: string;
-  demandLimit: string;
-  productionLimit: string;
-  inventoryLimit: string;
 };
 
 type CostRow = {
@@ -92,35 +95,36 @@ type GraphPoint = {
   totalCost: number;
 };
 
-type SimplexConstraint = {
-  name: string;
-  coefficients: number[];
-  rhs: number;
+type WeightedBreakEvenRow = {
+  productName: string;
+  revenuePerItem: number;
+  actualUnitsSoldToday: number;
+  salesRatio: number;
+  weightedBreakEvenUnits: number;
+  status: "needs more sales" | "meets requirement";
+  deficitUnits: number;
+  revenueToday: number;
+  profitToday: number;
 };
 
-type SimplexIteration = {
-  iteration: number;
-  tableau: number[][];
-  basicVariables: string[];
-  entering?: string;
-  leaving?: string;
-  pivotRow?: number;
-  pivotCol?: number;
-  pivotValue?: number;
+type WeightedBreakEvenSummary = {
+  totalUnitsToday: number;
+  totalBreakEvenUnits: number;
+  rows: WeightedBreakEvenRow[];
 };
 
-type SimplexResult = {
-  status: "optimal" | "unbounded";
-  message: string;
-  variableNames: string[];
-  columnNames: string[];
-  iterations: SimplexIteration[];
-  solution: number[];
-  objectiveValue: number;
+type MaterialProcurementRecommendation = {
+  material: string;
+  requiredQuantity: number;
 };
 
-const EPSILON = 1e-9;
-const MAX_SIMPLEX_ITERATIONS = 60;
+type ProcurementRow = {
+  id: string;
+  material: string;
+  totalAvailable: string;
+  totalProcurementCost: string;
+};
+
 const SVG_WIDTH = 760;
 const SVG_HEIGHT = 360;
 const GRAPH_PADDING = 48;
@@ -132,9 +136,8 @@ const STEP_TITLES = [
   "Step 4: Profit Analysis",
   "Step 5: Break-Even Analysis",
   "Step 6: Line Graph",
-  "Step 7: Define Conversion",
-  "Step 8: Simplex Optimization",
-  "Step 9: Final Output Summary"
+  "Step 7: Revenue Per Product (Today)",
+  "Step 8: Final Output Summary"
 ];
 
 const INITIAL_PRODUCTS: ProductRow[] = [
@@ -144,10 +147,7 @@ const INITIAL_PRODUCTS: ProductRow[] = [
     packSize: "",
     sellingPrice: "",
     variableCost: "",
-    unitsSoldToday: "",
-    demandLimit: "",
-    productionLimit: "",
-    inventoryLimit: ""
+    unitsSoldToday: ""
   }
 ];
 
@@ -159,6 +159,15 @@ const INITIAL_COST_ROWS: CostRow[] = [
   { id: "marketing", costName: "Marketing budget", amount: "" },
   { id: "budget", costName: "Budget (overall constraint)", amount: "", isBudget: true },
   { id: "other", costName: "Other fixed costs", amount: "" }
+];
+
+const INITIAL_PROCUREMENT_ROWS: ProcurementRow[] = [
+  {
+    id: "pr-1",
+    material: "",
+    totalAvailable: "",
+    totalProcurementCost: ""
+  }
 ];
 
 function toNumber(raw: string): number | null {
@@ -180,7 +189,7 @@ function formatPhp(value: number): string {
     return "Not reachable";
   }
 
-  return `₱${value.toLocaleString("en-PH", {
+  return `PHP ${value.toLocaleString("en-PH", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   })}`;
@@ -196,153 +205,6 @@ function formatNumber(value: number): string {
   }
 
   return Number.isInteger(value) ? value.toLocaleString("en-PH") : value.toLocaleString("en-PH", { maximumFractionDigits: 4 });
-}
-
-function cloneTableau(tableau: number[][]): number[][] {
-  return tableau.map((row) => row.map((cell) => (Math.abs(cell) < EPSILON ? 0 : cell)));
-}
-
-function extractSimplexSolution(tableau: number[][], basicVariables: string[], variableNames: string[]): number[] {
-  const rhsCol = tableau[0].length - 1;
-  return variableNames.map((name) => {
-    const rowIndex = basicVariables.findIndex((basic) => basic === name);
-    if (rowIndex < 0) {
-      return 0;
-    }
-
-    return tableau[rowIndex][rhsCol];
-  });
-}
-
-function solveSimplex(objective: number[], constraints: SimplexConstraint[]): SimplexResult {
-  const variableNames = objective.map((_, index) => `x${index + 1}`);
-  const constraintCount = constraints.length;
-  const variableCount = objective.length;
-  const slackNames = constraints.map((_, index) => `s${index + 1}`);
-  const columnNames = [...variableNames, ...slackNames, "RHS"];
-
-  const tableau = Array.from({ length: constraintCount + 1 }, () => Array(variableCount + constraintCount + 1).fill(0));
-  const basicVariables = [...slackNames];
-
-  constraints.forEach((constraint, rowIndex) => {
-    constraint.coefficients.forEach((coefficient, colIndex) => {
-      tableau[rowIndex][colIndex] = coefficient;
-    });
-
-    tableau[rowIndex][variableCount + rowIndex] = 1;
-    tableau[rowIndex][variableCount + constraintCount] = constraint.rhs;
-  });
-
-  objective.forEach((coefficient, colIndex) => {
-    tableau[constraintCount][colIndex] = -coefficient;
-  });
-
-  const iterations: SimplexIteration[] = [
-    {
-      iteration: 0,
-      tableau: cloneTableau(tableau),
-      basicVariables: [...basicVariables]
-    }
-  ];
-
-  for (let iteration = 1; iteration <= MAX_SIMPLEX_ITERATIONS; iteration += 1) {
-    const objectiveRow = tableau[constraintCount];
-    let enteringCol = -1;
-    let mostNegative = -EPSILON;
-
-    for (let col = 0; col < variableCount + constraintCount; col += 1) {
-      if (objectiveRow[col] < mostNegative) {
-        mostNegative = objectiveRow[col];
-        enteringCol = col;
-      }
-    }
-
-    if (enteringCol === -1) {
-      const solution = extractSimplexSolution(tableau, basicVariables, variableNames);
-      return {
-        status: "optimal",
-        message: "Optimal solution found.",
-        variableNames,
-        columnNames,
-        iterations,
-        solution,
-        objectiveValue: tableau[constraintCount][variableCount + constraintCount]
-      };
-    }
-
-    let leavingRow = -1;
-    let minimumRatio = Number.POSITIVE_INFINITY;
-
-    for (let row = 0; row < constraintCount; row += 1) {
-      const pivotColumnValue = tableau[row][enteringCol];
-      if (pivotColumnValue > EPSILON) {
-        const ratio = tableau[row][variableCount + constraintCount] / pivotColumnValue;
-        if (ratio < minimumRatio - EPSILON) {
-          minimumRatio = ratio;
-          leavingRow = row;
-        }
-      }
-    }
-
-    if (leavingRow === -1) {
-      const solution = extractSimplexSolution(tableau, basicVariables, variableNames);
-      return {
-        status: "unbounded",
-        message: "Objective is unbounded for the given constraints.",
-        variableNames,
-        columnNames,
-        iterations,
-        solution,
-        objectiveValue: Number.POSITIVE_INFINITY
-      };
-    }
-
-    const previousLeavingVariable = basicVariables[leavingRow];
-    const pivotValue = tableau[leavingRow][enteringCol];
-
-    for (let col = 0; col < variableCount + constraintCount + 1; col += 1) {
-      tableau[leavingRow][col] /= pivotValue;
-    }
-
-    for (let row = 0; row < constraintCount + 1; row += 1) {
-      if (row === leavingRow) {
-        continue;
-      }
-
-      const factor = tableau[row][enteringCol];
-      if (Math.abs(factor) < EPSILON) {
-        continue;
-      }
-
-      for (let col = 0; col < variableCount + constraintCount + 1; col += 1) {
-        tableau[row][col] -= factor * tableau[leavingRow][col];
-      }
-    }
-
-    basicVariables[leavingRow] = enteringCol < variableCount ? variableNames[enteringCol] : slackNames[enteringCol - variableCount];
-
-    iterations.push({
-      iteration,
-      tableau: cloneTableau(tableau),
-      basicVariables: [...basicVariables],
-      entering: columnNames[enteringCol],
-      leaving: previousLeavingVariable,
-      pivotRow: leavingRow + 1,
-      pivotCol: enteringCol + 1,
-      pivotValue
-    });
-  }
-
-  const solution = extractSimplexSolution(tableau, basicVariables, variableNames);
-  return {
-    status: "unbounded",
-    message: "Simplex reached iteration limit before converging.",
-    variableNames,
-    columnNames,
-    iterations,
-    solution,
-    objectiveValue: Number.POSITIVE_INFINITY
-  };
 }
 
 function createGraphPoints(
@@ -371,7 +233,7 @@ function createGraphPoints(
   return { points, maxUnits, maxAmount };
 }
 
-export default function HomePage() {
+export default function BusinessAnalysisWorkspace() {
   const { loading: authLoading, authorized, email, signOut } = useOrgAuth();
 
   const [currentStep, setCurrentStep] = useState(1);
@@ -380,12 +242,18 @@ export default function HomePage() {
   const [costRows, setCostRows] = useState<CostRow[]>(INITIAL_COST_ROWS);
   const [nextProductId, setNextProductId] = useState(2);
   const [nextCostId, setNextCostId] = useState(1);
-  const [buyers, setBuyers] = useState("");
-  const [visitors, setVisitors] = useState("");
-  const [applyDemandLimits, setApplyDemandLimits] = useState(false);
-  const [applyProductionLimits, setApplyProductionLimits] = useState(false);
-  const [applyInventoryLimits, setApplyInventoryLimits] = useState(false);
+  const [procurementRows, setProcurementRows] = useState<ProcurementRow[]>(INITIAL_PROCUREMENT_ROWS);
+  const [nextProcurementId, setNextProcurementId] = useState(2);
   const [planningDataVersion, setPlanningDataVersion] = useState(0);
+  const [hasLoadedProcurementFromStorage, setHasLoadedProcurementFromStorage] = useState(false);
+
+  const [lockStatusLoading, setLockStatusLoading] = useState(true);
+  const [serverLockEnabled, setServerLockEnabled] = useState(false);
+  const [locksDisabledByUser, setLocksDisabledByUser] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<{ state: "idle" | "saving" | "success" | "error"; message: string }>({
+    state: "idle",
+    message: ""
+  });
 
   useEffect(() => {
     if (!shouldAutofillLocalInput()) {
@@ -399,12 +267,67 @@ export default function HomePage() {
     setCostRows(seed.costRows);
     setNextProductId(seed.nextProductId);
     setNextCostId(seed.nextCostId);
-    setBuyers(seed.buyers);
-    setVisitors(seed.visitors);
-    setApplyDemandLimits(seed.applyDemandLimits);
-    setApplyProductionLimits(seed.applyProductionLimits);
-    setApplyInventoryLimits(seed.applyInventoryLimits);
+
+    const storedProcurement = loadProcurementData();
+    if (storedProcurement.length > 0) {
+      setProcurementRows(
+        storedProcurement.map((row, index) => ({
+          id: `pr-${index + 1}`,
+          material: row.material,
+          totalAvailable: row.totalAvailable.toString(),
+          totalProcurementCost: row.totalProcurementCost.toString()
+        }))
+      );
+      setNextProcurementId(storedProcurement.length + 1);
+    }
+
+    setHasLoadedProcurementFromStorage(true);
   }, []);
+
+  useEffect(() => {
+    if (hasLoadedProcurementFromStorage) {
+      return;
+    }
+
+    const storedProcurement = loadProcurementData();
+    if (storedProcurement.length > 0) {
+      setProcurementRows(
+        storedProcurement.map((row, index) => ({
+          id: `pr-${index + 1}`,
+          material: row.material,
+          totalAvailable: row.totalAvailable.toString(),
+          totalProcurementCost: row.totalProcurementCost.toString()
+        }))
+      );
+      setNextProcurementId(storedProcurement.length + 1);
+    }
+
+    setHasLoadedProcurementFromStorage(true);
+  }, [hasLoadedProcurementFromStorage]);
+
+  useEffect(() => {
+    if (!hasLoadedProcurementFromStorage) {
+      return;
+    }
+
+    const cleanRows: StoredProcurementData[] = procurementRows
+      .map((row) => {
+        const available = toNumber(row.totalAvailable);
+        const totalCost = toNumber(row.totalProcurementCost);
+        if (!row.material.trim() || available === null || available <= 0 || totalCost === null || totalCost < 0) {
+          return null;
+        }
+
+        return {
+          material: row.material.trim(),
+          totalAvailable: available,
+          totalProcurementCost: totalCost
+        };
+      })
+      .filter((row): row is NonNullable<typeof row> => row !== null);
+
+    saveProcurementData(cleanRows);
+  }, [procurementRows, hasLoadedProcurementFromStorage]);
 
   useEffect(() => {
     const productNames = Array.from(
@@ -431,6 +354,70 @@ export default function HomePage() {
       window.removeEventListener(PLANNING_DATA_UPDATED_EVENT, handlePlanningDataUpdate as EventListener);
     };
   }, []);
+
+  useEffect(() => {
+    const syncDisabledLockState = () => {
+      setLocksDisabledByUser(isLocksDisabledOverride());
+    };
+
+    syncDisabledLockState();
+
+    window.addEventListener("storage", syncDisabledLockState);
+    window.addEventListener(PLANNING_LOCKS_UPDATED_EVENT, syncDisabledLockState as EventListener);
+
+    return () => {
+      window.removeEventListener("storage", syncDisabledLockState);
+      window.removeEventListener(PLANNING_LOCKS_UPDATED_EVENT, syncDisabledLockState as EventListener);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (authLoading || !authorized) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadLockStatus = async () => {
+      setLockStatusLoading(true);
+
+      try {
+        const headers = await getSessionAuthHeaders({ "Content-Type": "application/json" });
+        const response = await fetch("/api/locks/status", {
+          method: "GET",
+          headers
+        });
+
+        if (!response.ok) {
+          if (!cancelled) {
+            setServerLockEnabled(false);
+          }
+          return;
+        }
+
+        const data = (await response.json()) as { lockEnabled?: boolean };
+        if (!cancelled) {
+          setServerLockEnabled(Boolean(data.lockEnabled));
+        }
+      } catch {
+        if (!cancelled) {
+          setServerLockEnabled(false);
+        }
+      } finally {
+        if (!cancelled) {
+          setLockStatusLoading(false);
+        }
+      }
+    };
+
+    void loadLockStatus();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, authorized]);
+
+  const businessPagesLocked = serverLockEnabled && !locksDisabledByUser;
 
   const inferredVariableCostByProduct = useMemo(
     () => computeInferredVariableCostByProduct(products.map((product) => product.productName)),
@@ -462,7 +449,7 @@ export default function HomePage() {
 
       const sellingPrice = toNumber(product.sellingPrice);
       if (sellingPrice === null || sellingPrice <= 0) {
-        errors.push(`Product row ${rowNumber}: Selling Price must be a number greater than 0 (₱ per item).`);
+        errors.push(`Product row ${rowNumber}: Selling Price must be a number greater than 0 (PHP per item).`);
       }
 
       let variableCost: number | null = null;
@@ -674,179 +661,118 @@ export default function HomePage() {
     };
   }, [breakEvenAnalysis, step1Data.fixedCostTotal]);
 
-  const conversionValidationErrors = useMemo(() => {
-    const errors: string[] = [];
-    const visitorValue = toNumber(visitors);
-    const buyerValue = toNumber(buyers);
-
-    if (visitorValue === null || visitorValue <= 0 || !Number.isInteger(visitorValue)) {
-      errors.push("Number of Visitors must be a whole number greater than 0.");
-    }
-
-    if (buyerValue === null || buyerValue < 0 || !Number.isInteger(buyerValue)) {
-      errors.push("Number of Buyers must be a whole number that is 0 or greater.");
-    }
-
-    if (visitorValue !== null && buyerValue !== null && buyerValue > visitorValue) {
-      errors.push("Number of Buyers cannot be greater than Number of Visitors.");
-    }
-
-    return errors;
-  }, [buyers, visitors]);
-
-  const conversionRate = useMemo(() => {
-    if (conversionValidationErrors.length > 0) {
+  const weightedBreakEvenSummary = useMemo<WeightedBreakEvenSummary | null>(() => {
+    if (
+      step1Data.errors.length > 0 ||
+      unitsData.errors.length > 0 ||
+      !breakEvenAnalysis ||
+      !breakEvenAnalysis.canCompute ||
+      !Number.isFinite(breakEvenAnalysis.breakEvenUnits)
+    ) {
       return null;
     }
 
-    const visitorValue = toNumber(visitors);
-    const buyerValue = toNumber(buyers);
-    if (visitorValue === null || buyerValue === null || visitorValue === 0) {
+    const totalUnitsToday = step1Data.parsedProducts.reduce(
+      (sum, product) => sum + (unitsData.unitsByProductId.get(product.id) ?? 0),
+      0
+    );
+
+    if (totalUnitsToday <= 0) {
       return null;
     }
 
-    return (buyerValue / visitorValue) * 100;
-  }, [buyers, visitors, conversionValidationErrors]);
+    const rows = step1Data.parsedProducts.map((product) => {
+      const actualUnitsSoldToday = unitsData.unitsByProductId.get(product.id) ?? 0;
+      const salesRatio = actualUnitsSoldToday / totalUnitsToday;
+      const weightedBreakEvenUnits = salesRatio * breakEvenAnalysis.breakEvenUnits;
+      const status: WeightedBreakEvenRow["status"] =
+        actualUnitsSoldToday < weightedBreakEvenUnits ? "needs more sales" : "meets requirement";
+      const deficitUnits = status === "needs more sales" ? weightedBreakEvenUnits - actualUnitsSoldToday : 0;
+      const revenueToday = actualUnitsSoldToday * product.sellingPrice;
+      const profitToday = revenueToday - actualUnitsSoldToday * product.variableCost;
 
-  const simplexSetup = useMemo(() => {
-    if (step1Data.errors.length > 0 || step1Data.budget === null) {
       return {
-        errors: ["Complete Step 1 with valid product and budget values before Simplex optimization."],
-        objective: [] as number[],
-        constraints: [] as SimplexConstraint[],
-        result: null as SimplexResult | null
+        productName: product.productName,
+        revenuePerItem: product.sellingPrice,
+        actualUnitsSoldToday,
+        salesRatio,
+        weightedBreakEvenUnits,
+        status,
+        deficitUnits,
+        revenueToday,
+        profitToday
       };
+    });
+
+    return {
+      totalUnitsToday,
+      totalBreakEvenUnits: breakEvenAnalysis.breakEvenUnits,
+      rows
+    };
+  }, [breakEvenAnalysis, step1Data, unitsData]);
+
+  const weightedBreakEvenTotals = useMemo(() => {
+    if (!weightedBreakEvenSummary) {
+      return null;
     }
 
-    const errors: string[] = [];
-    const objective = step1Data.parsedProducts.map((product) => product.contributionMargin);
-    const constraints: SimplexConstraint[] = [];
+    const totalDeficitUnits = weightedBreakEvenSummary.rows.reduce((sum, row) => sum + row.deficitUnits, 0);
+    const totalRevenueToday = weightedBreakEvenSummary.rows.reduce((sum, row) => sum + row.revenueToday, 0);
+    const totalProfitToday = weightedBreakEvenSummary.rows.reduce((sum, row) => sum + row.profitToday, 0);
+    const productsNeedingMoreSales = weightedBreakEvenSummary.rows.filter((row) => row.status === "needs more sales").length;
 
-    if (step1Data.budget <= 0) {
-      errors.push("Budget must be greater than 0 to run Simplex optimization.");
-    } else {
-      constraints.push({
-        name: "Budget constraint",
-        coefficients: step1Data.parsedProducts.map((product) => product.variableCost),
-        rhs: step1Data.budget
-      });
+    return {
+      totalDeficitUnits,
+      totalRevenueToday,
+      totalProfitToday,
+      productsNeedingMoreSales
+    };
+  }, [weightedBreakEvenSummary]);
+
+  const materialProcurementRecommendations = useMemo<MaterialProcurementRecommendation[]>(() => {
+    if (!weightedBreakEvenSummary) {
+      return [];
     }
 
-    const addOptionalConstraints = (
-      enabled: boolean,
-      label: string,
-      limitSelector: (product: ProductRow) => string
-    ) => {
-      if (!enabled) {
+    const materialsData = loadMaterialRequirements();
+    if (materialsData.length === 0) {
+      return [];
+    }
+
+    const weightedUnitsByProduct = new Map<string, number>();
+    weightedBreakEvenSummary.rows.forEach((row) => {
+      weightedUnitsByProduct.set(normalizePlanningLabel(row.productName), row.weightedBreakEvenUnits);
+    });
+
+    const totalsByMaterial = new Map<string, MaterialProcurementRecommendation>();
+
+    materialsData.forEach((materialRow) => {
+      const productKey = normalizePlanningLabel(materialRow.product);
+      const requiredUnits = weightedUnitsByProduct.get(productKey);
+
+      if (requiredUnits === undefined) {
         return;
       }
 
-      products.forEach((product, productIndex) => {
-        const parsedLimit = toNumber(limitSelector(product));
-        if (parsedLimit === null || parsedLimit < 0) {
-          errors.push(`${label} for Product ${productIndex + 1} must be a number that is 0 or greater.`);
-          return;
-        }
-
-        const coefficients = step1Data.parsedProducts.map((_, index) => (index === productIndex ? 1 : 0));
-        constraints.push({
-          name: `${label} for x${productIndex + 1}`,
-          coefficients,
-          rhs: parsedLimit
-        });
-      });
-    };
-
-    addOptionalConstraints(applyDemandLimits, "Demand limit", (product) => product.demandLimit);
-    addOptionalConstraints(applyProductionLimits, "Production limit", (product) => product.productionLimit);
-    addOptionalConstraints(applyInventoryLimits, "Inventory limit", (product) => product.inventoryLimit);
-
-    if (errors.length > 0) {
-      return {
-        errors,
-        objective,
-        constraints,
-        result: null
-      };
-    }
-
-    const result = solveSimplex(objective, constraints);
-    return {
-      errors,
-      objective,
-      constraints,
-      result
-    };
-  }, [step1Data, products, applyDemandLimits, applyProductionLimits, applyInventoryLimits]);
-
-  const simplexSummary = useMemo(() => {
-    if (!simplexSetup.result || !profitAnalysis || step1Data.fixedCostTotal === null) {
-      return null;
-    }
-
-    const solutionRows = step1Data.parsedProducts.map((product, index) => ({
-      productName: product.productName,
-      units: simplexSetup.result?.solution[index] ?? 0
-    }));
-
-    const maxUnits = solutionRows.reduce((max, row) => Math.max(max, row.units), 0);
-    const priorityProducts =
-      maxUnits > 0 ? solutionRows.filter((row) => Math.abs(row.units - maxUnits) < 1e-6).map((row) => row.productName) : [];
-
-    const maximumContribution = simplexSetup.result.objectiveValue;
-    const maximumProfit =
-      simplexSetup.result.status === "optimal" && Number.isFinite(maximumContribution)
-        ? maximumContribution - step1Data.fixedCostTotal
-        : Number.NEGATIVE_INFINITY;
-
-    return {
-      solutionRows,
-      priorityProducts,
-      maximumContribution,
-      maximumProfit
-    };
-  }, [simplexSetup, step1Data, profitAnalysis]);
-
-  const updateProduct = (id: string, field: keyof ProductRow, value: string) => {
-    setProducts((previous) => previous.map((product) => (product.id === id ? { ...product, [field]: value } : product)));
-  };
-
-  const updateCostRow = (id: string, field: keyof CostRow, value: string) => {
-    setCostRows((previous) => previous.map((row) => (row.id === id ? { ...row, [field]: value } : row)));
-  };
-
-  const addProductRow = () => {
-    const newId = `p-${nextProductId}`;
-    setProducts((previous) => [
-      ...previous,
-      {
-        id: newId,
-        productName: "",
-        packSize: "",
-        sellingPrice: "",
-        variableCost: "",
-        unitsSoldToday: "",
-        demandLimit: "",
-        productionLimit: "",
-        inventoryLimit: ""
+      const materialKey = normalizePlanningLabel(materialRow.material);
+      if (!materialKey) {
+        return;
       }
-    ]);
-    setNextProductId((prev) => prev + 1);
-  };
 
-  const removeProductRow = (id: string) => {
-    setProducts((previous) => (previous.length > 1 ? previous.filter((product) => product.id !== id) : previous));
-  };
+      const requiredQuantity = requiredUnits * materialRow.quantityNeededPerProduct;
+      const existing = totalsByMaterial.get(materialKey) ?? {
+        material: materialRow.material.trim(),
+        requiredQuantity: 0
+      };
 
-  const addCostRow = () => {
-    const newId = `cost-extra-${nextCostId}`;
-    setCostRows((previous) => [...previous, { id: newId, costName: "", amount: "" }]);
-    setNextCostId((prev) => prev + 1);
-  };
+      existing.requiredQuantity += requiredQuantity;
+      totalsByMaterial.set(materialKey, existing);
+    });
 
-  const removeCostRow = (id: string) => {
-    setCostRows((previous) => previous.filter((row) => row.id !== id || row.isBudget));
-  };
+    return Array.from(totalsByMaterial.values())
+      .filter((row) => row.requiredQuantity > 0)
+      .sort((a, b) => a.material.localeCompare(b.material));
+  }, [weightedBreakEvenSummary]);
 
   const graphPathData = useMemo(() => {
     if (!graphData) {
@@ -876,54 +802,6 @@ export default function HomePage() {
     };
   }, [graphData, breakEvenAnalysis]);
 
-  const objectiveFormula = useMemo(() => {
-    if (step1Data.parsedProducts.length === 0) {
-      return "Z = 0";
-    }
-
-    const terms = step1Data.parsedProducts.map((product, index) => `(${product.contributionMargin.toFixed(4)} × x${index + 1})`);
-    return `Maximize Z = ${terms.join(" + ")}`;
-  }, [step1Data.parsedProducts]);
-
-  const budgetFormula = useMemo(() => {
-    if (step1Data.parsedProducts.length === 0 || step1Data.budget === null) {
-      return "Budget constraint not available yet.";
-    }
-
-    const terms = step1Data.parsedProducts.map((product, index) => `(${product.variableCost.toFixed(4)} × x${index + 1})`);
-    return `${terms.join(" + ")} ≤ ${step1Data.budget.toFixed(4)}`;
-  }, [step1Data.parsedProducts, step1Data.budget]);
-
-  const optionalConstraintFormulas = useMemo(() => {
-    const formulas: string[] = [];
-
-    if (applyDemandLimits) {
-      products.forEach((product, index) => {
-        if (product.demandLimit.trim()) {
-          formulas.push(`x${index + 1} ≤ ${product.demandLimit.trim()} (Demand limit)`);
-        }
-      });
-    }
-
-    if (applyProductionLimits) {
-      products.forEach((product, index) => {
-        if (product.productionLimit.trim()) {
-          formulas.push(`x${index + 1} ≤ ${product.productionLimit.trim()} (Production limit)`);
-        }
-      });
-    }
-
-    if (applyInventoryLimits) {
-      products.forEach((product, index) => {
-        if (product.inventoryLimit.trim()) {
-          formulas.push(`x${index + 1} ≤ ${product.inventoryLimit.trim()} (Inventory limit)`);
-        }
-      });
-    }
-
-    return formulas;
-  }, [products, applyDemandLimits, applyProductionLimits, applyInventoryLimits]);
-
   const getStepValidationErrors = (step: number): string[] => {
     if (step === 1) {
       return step1Data.errors;
@@ -942,19 +820,31 @@ export default function HomePage() {
         return ["Complete Steps 1 and 3 with valid values before profit analysis."];
       }
 
-      if (profitAnalysis.totalUnitsSold <= 0) {
-        return ["At least one product must have Units Sold Today greater than 0 before break-even analysis."];
+      return [];
+    }
+
+    if (step === 5) {
+      if (!breakEvenAnalysis || !breakEvenAnalysis.canCompute) {
+        return ["Break-even cannot be computed yet. Complete prior steps with valid data."];
       }
 
       return [];
     }
 
-    if (step === 7) {
-      return conversionValidationErrors;
+    if (step === 6) {
+      if (!graphData || !graphPathData) {
+        return ["Line graph requires valid break-even data."];
+      }
+
+      return [];
     }
 
-    if (step === 8) {
-      return simplexSetup.errors;
+    if (step === 7 || step === 8) {
+      if (!weightedBreakEvenSummary) {
+        return ["Weighted break-even and revenue outputs require valid product sales for today."];
+      }
+
+      return [];
     }
 
     return [];
@@ -972,8 +862,147 @@ export default function HomePage() {
   };
 
   const goBack = () => {
+    if (businessPagesLocked && currentStep === 3) {
+      setStepErrors([]);
+      setCurrentStep(1);
+      return;
+    }
+
     setStepErrors([]);
     setCurrentStep((previous) => Math.max(previous - 1, 1));
+  };
+
+  const updateProduct = (id: string, field: keyof ProductRow, value: string) => {
+    setProducts((previous) => previous.map((product) => (product.id === id ? { ...product, [field]: value } : product)));
+  };
+
+  const updateCostRow = (id: string, field: keyof CostRow, value: string) => {
+    setCostRows((previous) => previous.map((row) => (row.id === id ? { ...row, [field]: value } : row)));
+  };
+
+  const addProductRow = () => {
+    const newId = `p-${nextProductId}`;
+    setProducts((previous) => [
+      ...previous,
+      {
+        id: newId,
+        productName: "",
+        packSize: "",
+        sellingPrice: "",
+        variableCost: "",
+        unitsSoldToday: ""
+      }
+    ]);
+    setNextProductId((prev) => prev + 1);
+  };
+
+  const removeProductRow = (id: string) => {
+    setProducts((previous) => (previous.length > 1 ? previous.filter((product) => product.id !== id) : previous));
+  };
+
+  const addCostRow = () => {
+    const newId = `cost-extra-${nextCostId}`;
+    setCostRows((previous) => [...previous, { id: newId, costName: "", amount: "" }]);
+    setNextCostId((prev) => prev + 1);
+  };
+
+  const removeCostRow = (id: string) => {
+    setCostRows((previous) => previous.filter((row) => row.id !== id || row.isBudget));
+  };
+
+  const updateProcurementRow = (id: string, field: keyof ProcurementRow, value: string) => {
+    setProcurementRows((previous) => previous.map((row) => (row.id === id ? { ...row, [field]: value } : row)));
+  };
+
+  const addProcurementRow = () => {
+    const id = `pr-${nextProcurementId}`;
+    setProcurementRows((previous) => [
+      ...previous,
+      {
+        id,
+        material: "",
+        totalAvailable: "",
+        totalProcurementCost: ""
+      }
+    ]);
+    setNextProcurementId((prev) => prev + 1);
+  };
+
+  const removeProcurementRow = (id: string) => {
+    setProcurementRows((previous) => (previous.length > 1 ? previous.filter((row) => row.id !== id) : previous));
+  };
+
+  const toggleLockMode = () => {
+    if (businessPagesLocked) {
+      disableAllPageLocks();
+      setLocksDisabledByUser(true);
+      return;
+    }
+
+    enableAllPageLocks();
+    setLocksDisabledByUser(false);
+    setCurrentStep(1);
+  };
+
+  const goToLockedStep3 = () => {
+    setStepErrors([]);
+    setCurrentStep(3);
+  };
+
+  const addDataToSupabase = async () => {
+    if (!weightedBreakEvenSummary) {
+      setSaveStatus({ state: "error", message: "Cannot save yet. Complete Step 8 outputs first." });
+      return;
+    }
+
+    setSaveStatus({ state: "saving", message: "Saving data to Supabase..." });
+
+    const materialsData = loadMaterialRequirements();
+    const procurementData = loadProcurementData();
+
+    const businessDataPayload = weightedBreakEvenSummary.rows.map((row) => ({
+      productName: row.productName,
+      revenuePerItem: row.revenuePerItem,
+      weightedBreakEvenUnits: row.weightedBreakEvenUnits,
+      actualUnitsSoldToday: row.actualUnitsSoldToday,
+      deficitUnits: row.deficitUnits,
+      revenueToday: row.revenueToday,
+      profitToday: row.profitToday
+    }));
+
+    try {
+      const headers = await getSessionAuthHeaders({ "Content-Type": "application/json" });
+      const response = await fetch("/api/basis/save", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          businessAnalysisData: businessDataPayload,
+          materialsData,
+          procurementData
+        })
+      });
+
+      const data = (await response.json()) as { message?: string; saved?: boolean };
+      if (!response.ok || !data.saved) {
+        setSaveStatus({ state: "error", message: data.message ?? "Failed to save basis data to Supabase." });
+        return;
+      }
+
+      setSaveStatus({ state: "success", message: "Basis data successfully inserted into Supabase." });
+
+      const lockHeaders = await getSessionAuthHeaders({ "Content-Type": "application/json" });
+      const lockResponse = await fetch("/api/locks/status", {
+        method: "GET",
+        headers: lockHeaders
+      });
+
+      if (lockResponse.ok) {
+        const lockData = (await lockResponse.json()) as { lockEnabled?: boolean };
+        setServerLockEnabled(Boolean(lockData.lockEnabled));
+      }
+    } catch {
+      setSaveStatus({ state: "error", message: "Failed to save basis data to Supabase." });
+    }
   };
 
   const profitabilityStatus =
@@ -992,11 +1021,6 @@ export default function HomePage() {
         )} revenue.`
       : "Break-even cannot be computed with the current sales mix. Increase contribution margin or units sold mix.";
 
-  const optimizationRecommendation =
-    simplexSummary && simplexSetup.result?.status === "optimal" && simplexSummary.priorityProducts.length > 0
-      ? `Prioritize ${simplexSummary.priorityProducts.join(", ")} based on simplex optimal units.`
-      : "No product is currently profitable under the provided constraints; review price, cost, or limits.";
-
   if (authLoading) {
     return (
       <main className="page-shell">
@@ -1011,6 +1035,102 @@ export default function HomePage() {
     return null;
   }
 
+  const showLockedProcurementPage = businessPagesLocked && currentStep < 3;
+
+  if (showLockedProcurementPage) {
+    return (
+      <main className="page-shell">
+        <section className="hero">
+          <h1>UNLOCKED PAGE</h1>
+          <p>Lock mode is active. This first page now serves as the editable Procurement page.</p>
+          <div className="nav">
+            <a href="/">Unlocked Page</a>
+            <a href="/materials">Locked Page</a>
+            <a href="/analytics">Detailed Analytics</a>
+            <button type="button" onClick={toggleLockMode} style={{ maxWidth: "220px", marginLeft: "auto" }}>
+              Disable Lock
+            </button>
+            <button type="button" onClick={signOut} style={{ maxWidth: "220px" }}>
+              Sign Out ({email})
+            </button>
+          </div>
+        </section>
+
+        <section className="card" style={{ marginTop: "1rem" }}>
+          <h2>PROCUREMENT PAGE (UNLOCKED)</h2>
+          <p className="muted">Required structure: Material | Total Available | Total Procurement Cost (PHP)</p>
+
+          <div className="table-wrap" style={{ marginTop: "0.7rem" }}>
+            <table className="ops-table">
+              <thead>
+                <tr>
+                  <th>Material</th>
+                  <th>Total Available</th>
+                  <th>Total Procurement Cost (PHP)</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {procurementRows.map((row) => (
+                  <tr key={row.id}>
+                    <td>
+                      <input
+                        type="text"
+                        value={row.material}
+                        onChange={(event) => updateProcurementRow(row.id, "material", event.target.value)}
+                        placeholder="Example: Sugar"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={row.totalAvailable}
+                        onChange={(event) => updateProcurementRow(row.id, "totalAvailable", event.target.value)}
+                        placeholder="0.00"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={row.totalProcurementCost}
+                        onChange={(event) => updateProcurementRow(row.id, "totalProcurementCost", event.target.value)}
+                        placeholder="0.00"
+                      />
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        onClick={() => removeProcurementRow(row.id)}
+                        disabled={procurementRows.length <= 1}
+                        style={{ maxWidth: "130px" }}
+                      >
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <button type="button" onClick={addProcurementRow} style={{ marginTop: "0.75rem", maxWidth: "240px" }}>
+            Add Procurement Row
+          </button>
+
+          <div className="wizard-nav" style={{ marginTop: "0.9rem" }}>
+            <button type="button" onClick={goToLockedStep3} style={{ maxWidth: "180px", justifySelf: "end" }}>
+              Next Step (Go to Step 3)
+            </button>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="page-shell">
       <section className="hero">
@@ -1022,6 +1142,9 @@ export default function HomePage() {
           <a href="/">Business Analysis</a>
           <a href="/materials">Material Requirements</a>
           <a href="/analytics">Detailed Analytics</a>
+          <button type="button" onClick={toggleLockMode} style={{ maxWidth: "220px", marginLeft: "auto" }}>
+            Enable Lock
+          </button>
           <button type="button" onClick={signOut} style={{ maxWidth: "220px" }}>
             Sign Out ({email})
           </button>
@@ -1034,17 +1157,28 @@ export default function HomePage() {
           Progress step {currentStep} of {STEP_TITLES.length}
         </p>
 
+        {lockStatusLoading ? <p className="muted">Checking lock status from Supabase...</p> : null}
+        {businessPagesLocked ? <p className="muted" style={{ marginTop: "0.45rem" }}>Lock mode is active.</p> : null}
+
         <div className="stepper" aria-label="Business analysis steps">
           {STEP_TITLES.map((title, index) => {
             const step = index + 1;
             const className = step === currentStep ? "step-pill active" : step < currentStep ? "step-pill done" : "step-pill";
+            const stepLocked = businessPagesLocked && step < 3;
             return (
               <button
                 key={title}
                 type="button"
                 className={className}
-                onClick={() => setCurrentStep(step <= currentStep ? step : currentStep)}
+                onClick={() => {
+                  if (stepLocked) {
+                    return;
+                  }
+
+                  setCurrentStep(step <= currentStep ? step : currentStep);
+                }}
                 aria-current={step === currentStep ? "step" : undefined}
+                disabled={stepLocked}
               >
                 {step}
               </button>
@@ -1063,143 +1197,151 @@ export default function HomePage() {
 
         {currentStep === 1 ? (
           <div>
-            <p className="muted">
-              Rules: Selling Price must be entered per item only. Variable Cost per item is inferred from Material Requirements and Procurement Data
-              on /materials. Pack Size is descriptive only and is not included in cost computation.
-            </p>
+            {(
+              <>
+                <p className="muted">
+                  Rules: Selling Price must be entered per item only. Variable Cost per item is inferred from Material Requirements and Procurement Data
+                  on /materials. Pack Size is descriptive only and is not included in cost computation.
+                </p>
 
-            <h3 style={{ marginTop: "1rem" }}>Page 1A: Product Information (All Products)</h3>
-            <div className="table-wrap" style={{ marginTop: "0.65rem" }}>
-              <table className="ops-table">
-                <thead>
-                  <tr>
-                    <th>Product Name</th>
-                    <th>Pack Size (descriptive)</th>
-                    <th>Selling Price (₱ per item)</th>
-                    <th>Variable Cost (₱ per item)</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {products.map((product) => (
-                    <tr key={product.id}>
-                      <td>
-                        <input
-                          type="text"
-                          value={product.productName}
-                          onChange={(event) => updateProduct(product.id, "productName", event.target.value)}
-                          placeholder="Example: Product A"
-                        />
-                      </td>
-                      <td>
-                        <input
-                          type="text"
-                          value={product.packSize}
-                          onChange={(event) => updateProduct(product.id, "packSize", event.target.value)}
-                          placeholder="Example: 6-pack"
-                        />
-                      </td>
-                      <td>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={product.sellingPrice}
-                          onChange={(event) => updateProduct(product.id, "sellingPrice", event.target.value)}
-                          placeholder="0.00"
-                        />
-                      </td>
-                      <td>
-                        {(() => {
-                          const inferred = inferredVariableCostByProduct.get(normalizePlanningLabel(product.productName));
-                          const inferredValue = inferred?.variableCostPerItem;
+                <h3 style={{ marginTop: "1rem" }}>Page 1A: Product Information (All Products)</h3>
+                <div className="table-wrap" style={{ marginTop: "0.65rem" }}>
+                  <table className="ops-table">
+                    <thead>
+                      <tr>
+                        <th>Product Name</th>
+                        <th>Pack Size (descriptive)</th>
+                        <th>Selling Price (PHP per item)</th>
+                        <th>Variable Cost (PHP per item)</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {products.map((product) => (
+                        <tr key={product.id}>
+                          <td>
+                            <input
+                              type="text"
+                              value={product.productName}
+                              onChange={(event) => updateProduct(product.id, "productName", event.target.value)}
+                              placeholder="Example: Product A"
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="text"
+                              value={product.packSize}
+                              onChange={(event) => updateProduct(product.id, "packSize", event.target.value)}
+                              placeholder="Example: 6-pack"
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={product.sellingPrice}
+                              onChange={(event) => updateProduct(product.id, "sellingPrice", event.target.value)}
+                              placeholder="0.00"
+                            />
+                          </td>
+                          <td>
+                            {(() => {
+                              const inferred = inferredVariableCostByProduct.get(normalizePlanningLabel(product.productName));
+                              const inferredValue = inferred?.variableCostPerItem;
 
-                          return (
-                            <>
-                              <input
-                                type="text"
-                                readOnly
-                                disabled
-                                className="inferred-cost-input"
-                                value={inferredValue !== null && inferredValue !== undefined && Number.isFinite(inferredValue) ? inferredValue.toFixed(4) : ""}
-                                placeholder="Inferred from /materials"
-                              />
-                              <p className="muted inline-help">Auto-calculated from Material Requirements and Procurement Data.</p>
-                            </>
-                          );
-                        })()}
-                      </td>
-                      <td>
-                        <button
-                          type="button"
-                          onClick={() => removeProductRow(product.id)}
-                          disabled={products.length <= 1}
-                          style={{ maxWidth: "140px" }}
-                        >
-                          Remove
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                              return (
+                                <>
+                                  <input
+                                    type="text"
+                                    readOnly
+                                    disabled
+                                    className="inferred-cost-input"
+                                    value={
+                                      inferredValue !== null && inferredValue !== undefined && Number.isFinite(inferredValue)
+                                        ? inferredValue.toFixed(4)
+                                        : ""
+                                    }
+                                    placeholder="Inferred from /materials"
+                                  />
+                                  <p className="muted inline-help">Auto-calculated from Material Requirements and Procurement Data.</p>
+                                </>
+                              );
+                            })()}
+                          </td>
+                          <td>
+                            <button
+                              type="button"
+                              onClick={() => removeProductRow(product.id)}
+                              disabled={products.length <= 1}
+                              style={{ maxWidth: "140px" }}
+                            >
+                              Remove
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
 
-            <button type="button" onClick={addProductRow} style={{ marginTop: "0.75rem", maxWidth: "220px" }}>
-              Add Product Row
-            </button>
+                <button type="button" onClick={addProductRow} style={{ marginTop: "0.75rem", maxWidth: "220px" }}>
+                  Add Product Row
+                </button>
 
-            <h3 style={{ marginTop: "1.25rem" }}>Page 1B: Fixed Costs + Budget</h3>
-            <p className="muted">Budget stays in this table, but is treated as the optimization constraint, not as product cost.</p>
-            <div className="table-wrap" style={{ marginTop: "0.65rem" }}>
-              <table className="ops-table">
-                <thead>
-                  <tr>
-                    <th>Cost Name</th>
-                    <th>Amount (₱)</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {costRows.map((cost) => (
-                    <tr key={cost.id}>
-                      <td>
-                        <input
-                          type="text"
-                          value={cost.costName}
-                          onChange={(event) => updateCostRow(cost.id, "costName", event.target.value)}
-                          placeholder={cost.isBudget ? "Budget (overall constraint)" : "Cost name"}
-                          disabled={Boolean(cost.isBudget)}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={cost.amount}
-                          onChange={(event) => updateCostRow(cost.id, "amount", event.target.value)}
-                          placeholder="0.00"
-                        />
-                      </td>
-                      <td>
-                        {cost.isBudget ? (
-                          <span className="muted">Required row</span>
-                        ) : (
-                          <button type="button" onClick={() => removeCostRow(cost.id)} style={{ maxWidth: "140px" }}>
-                            Remove
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                <h3 style={{ marginTop: "1.25rem" }}>Page 1B: Fixed Costs + Budget</h3>
+                <p className="muted">Budget stays in this table, but is treated as the break-even and planning constraint, not as product cost.</p>
+                <div className="table-wrap" style={{ marginTop: "0.65rem" }}>
+                  <table className="ops-table">
+                    <thead>
+                      <tr>
+                        <th>Cost Name</th>
+                        <th>Amount (PHP)</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {costRows.map((cost) => (
+                        <tr key={cost.id}>
+                          <td>
+                            <input
+                              type="text"
+                              value={cost.costName}
+                              onChange={(event) => updateCostRow(cost.id, "costName", event.target.value)}
+                              placeholder={cost.isBudget ? "Budget (overall constraint)" : "Cost name"}
+                              disabled={Boolean(cost.isBudget)}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={cost.amount}
+                              onChange={(event) => updateCostRow(cost.id, "amount", event.target.value)}
+                              placeholder="0.00"
+                            />
+                          </td>
+                          <td>
+                            {cost.isBudget ? (
+                              <span className="muted">Required row</span>
+                            ) : (
+                              <button type="button" onClick={() => removeCostRow(cost.id)} style={{ maxWidth: "140px" }}>
+                                Remove
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
 
-            <button type="button" onClick={addCostRow} style={{ marginTop: "0.75rem", maxWidth: "220px" }}>
-              Add Fixed Cost Row
-            </button>
+                <button type="button" onClick={addCostRow} style={{ marginTop: "0.75rem", maxWidth: "220px" }}>
+                  Add Fixed Cost Row
+                </button>
+              </>
+            )}
           </div>
         ) : null}
 
@@ -1222,9 +1364,9 @@ export default function HomePage() {
                   <thead>
                     <tr>
                       <th>Product</th>
-                      <th>Selling Price (₱)</th>
-                      <th>Variable Cost (₱)</th>
-                      <th>Contribution Margin (₱)</th>
+                      <th>Selling Price (PHP)</th>
+                      <th>Variable Cost (PHP)</th>
+                      <th>Contribution Margin (PHP)</th>
                       <th>Contribution Margin Ratio</th>
                     </tr>
                   </thead>
@@ -1247,7 +1389,7 @@ export default function HomePage() {
 
         {currentStep === 3 ? (
           <div>
-            <p className="muted">Second page (required): enter units sold today for each product. No assumptions are made.</p>
+            <p className="muted">Required input: enter units sold today for each product.</p>
 
             {step1Data.errors.length > 0 ? (
               <UserErrorPanel
@@ -1289,11 +1431,8 @@ export default function HomePage() {
         {currentStep === 4 ? (
           <div>
             <div className="formula-box">
-              <p>Formulas:</p>
-              <p>Total Revenue = Σ (Selling Price × Units Sold)</p>
-              <p>Total Variable Cost = Σ (Variable Cost × Units Sold)</p>
-              <p>Total Contribution Margin = Total Revenue - Total Variable Cost</p>
-              <p>Net Profit = Total Contribution Margin - Total Fixed Cost</p>
+              <p>Compact formula set:</p>
+              <p>Revenue = sum(Price x Units), Variable Cost = sum(Var Cost x Units), Net Profit = Revenue - Variable Cost - Fixed Cost.</p>
             </div>
 
             {!profitAnalysis || step1Data.fixedCostTotal === null ? (
@@ -1307,7 +1446,7 @@ export default function HomePage() {
                   <thead>
                     <tr>
                       <th>Metric</th>
-                      <th>Value (₱)</th>
+                      <th>Value (PHP)</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1347,10 +1486,8 @@ export default function HomePage() {
         {currentStep === 5 ? (
           <div>
             <div className="formula-box">
-              <p>Formulas:</p>
-              <p>Weighted Average Contribution Margin = Σ (Product Contribution Margin × Sales Mix Weight)</p>
-              <p>Break-Even Point (Units) = Total Fixed Cost / Weighted Average Contribution Margin</p>
-              <p>Break-Even Revenue = Break-Even Units × Weighted Average Selling Price</p>
+              <p>Compact break-even formulas:</p>
+              <p>Weighted CM = sum(Product CM x Sales Mix), BE Units = Fixed Cost / Weighted CM, BE Revenue = BE Units x Weighted Selling Price.</p>
             </div>
 
             {!breakEvenAnalysis ? (
@@ -1386,6 +1523,8 @@ export default function HomePage() {
                 </table>
               </div>
             )}
+
+            <p style={{ marginTop: "0.75rem" }}>{breakEvenInsight}</p>
           </div>
         ) : null}
 
@@ -1393,8 +1532,8 @@ export default function HomePage() {
           <div>
             <div className="formula-box">
               <p>Graph equations:</p>
-              <p>Total Revenue Line = Weighted Average Selling Price × Units Sold</p>
-              <p>Total Cost Line = Total Fixed Cost + (Weighted Average Variable Cost × Units Sold)</p>
+              <p>Total Revenue Line = Weighted Average Selling Price x Units Sold</p>
+              <p>Total Cost Line = Total Fixed Cost + (Weighted Average Variable Cost x Units Sold)</p>
             </div>
 
             {!graphData || !graphPathData ? (
@@ -1439,7 +1578,7 @@ export default function HomePage() {
                     Units sold
                   </text>
                   <text x={8} y={22} fontSize="13" fill="#261a12">
-                    Amount (₱)
+                    Amount (PHP)
                   </text>
                 </svg>
 
@@ -1460,308 +1599,154 @@ export default function HomePage() {
 
         {currentStep === 7 ? (
           <div>
-            <div className="formula-box">
-              <p>Definition:</p>
-              <p>Conversion = Percentage of potential customers who actually buy.</p>
-              <p>Formula: Conversion Rate = (Number of Buyers / Number of Visitors) × 100</p>
-            </div>
+            <p className="muted">Compact view: this step shows daily revenue by product only. Profit and break-even requirement are summarized in Steps 4 and 8.</p>
 
-            <div className="table-wrap" style={{ marginTop: "0.75rem" }}>
-              <table className="ops-table">
-                <thead>
-                  <tr>
-                    <th>Number of Visitors</th>
-                    <th>Number of Buyers</th>
-                    <th>Conversion Rate</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>
-                      <input
-                        type="number"
-                        min="1"
-                        step="1"
-                        value={visitors}
-                        onChange={(event) => setVisitors(event.target.value)}
-                        placeholder="0"
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="number"
-                        min="0"
-                        step="1"
-                        value={buyers}
-                        onChange={(event) => setBuyers(event.target.value)}
-                        placeholder="0"
-                      />
-                    </td>
-                    <td>{conversionRate === null ? "Waiting for valid inputs" : `${conversionRate.toFixed(2)}%`}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        ) : null}
-
-        {currentStep === 8 ? (
-          <div>
-            <div className="formula-box">
-              <p>Objective Function:</p>
-              <p>{objectiveFormula}</p>
-              <p>Budget Constraint:</p>
-              <p>{budgetFormula}</p>
-            </div>
-
-            <div className="constraint-switches">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={applyDemandLimits}
-                  onChange={(event) => setApplyDemandLimits(event.target.checked)}
-                  style={{ width: "auto", marginRight: "0.45rem" }}
-                />
-                Apply demand limits
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={applyProductionLimits}
-                  onChange={(event) => setApplyProductionLimits(event.target.checked)}
-                  style={{ width: "auto", marginRight: "0.45rem" }}
-                />
-                Apply production limits
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={applyInventoryLimits}
-                  onChange={(event) => setApplyInventoryLimits(event.target.checked)}
-                  style={{ width: "auto", marginRight: "0.45rem" }}
-                />
-                Apply inventory limits
-              </label>
-            </div>
-
-            {applyDemandLimits || applyProductionLimits || applyInventoryLimits ? (
+            {!weightedBreakEvenSummary ? (
+              <UserErrorPanel
+                title="Step 7 Needs Weighted Sales Data"
+                message="Complete prior steps and provide valid today sales values to compute per-product revenue insights."
+              />
+            ) : (
               <div className="table-wrap" style={{ marginTop: "0.75rem" }}>
                 <table className="ops-table">
                   <thead>
                     <tr>
                       <th>Product</th>
-                      {applyDemandLimits ? <th>Demand limit</th> : null}
-                      {applyProductionLimits ? <th>Production limit</th> : null}
-                      {applyInventoryLimits ? <th>Inventory limit</th> : null}
+                      <th>Quantity Sold Today</th>
+                      <th>Revenue Today</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {products.map((product) => (
-                      <tr key={product.id}>
-                        <td>{product.productName || "Unnamed Product"}</td>
-                        {applyDemandLimits ? (
-                          <td>
-                            <input
-                              type="number"
-                              min="0"
-                              step="1"
-                              value={product.demandLimit}
-                              onChange={(event) => updateProduct(product.id, "demandLimit", event.target.value)}
-                              placeholder="0"
-                            />
-                          </td>
-                        ) : null}
-                        {applyProductionLimits ? (
-                          <td>
-                            <input
-                              type="number"
-                              min="0"
-                              step="1"
-                              value={product.productionLimit}
-                              onChange={(event) => updateProduct(product.id, "productionLimit", event.target.value)}
-                              placeholder="0"
-                            />
-                          </td>
-                        ) : null}
-                        {applyInventoryLimits ? (
-                          <td>
-                            <input
-                              type="number"
-                              min="0"
-                              step="1"
-                              value={product.inventoryLimit}
-                              onChange={(event) => updateProduct(product.id, "inventoryLimit", event.target.value)}
-                              placeholder="0"
-                            />
-                          </td>
-                        ) : null}
+                    {weightedBreakEvenSummary.rows.map((row) => (
+                      <tr key={`revenue-row-${row.productName}`}>
+                        <td>{row.productName}</td>
+                        <td>{formatNumber(row.actualUnitsSoldToday)}</td>
+                        <td>{formatPhp(row.revenueToday)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            ) : null}
+            )}
+          </div>
+        ) : null}
 
-            {optionalConstraintFormulas.length > 0 ? (
-              <div className="formula-box" style={{ marginTop: "0.75rem" }}>
-                <p>Optional constraints:</p>
-                {optionalConstraintFormulas.map((formula) => (
-                  <p key={formula}>{formula}</p>
-                ))}
-              </div>
-            ) : null}
-
-            {simplexSetup.errors.length > 0 ? (
-              <UserErrorPanel title="Simplex Input Validation" message={simplexSetup.errors.join(" ")} />
-            ) : simplexSetup.result ? (
-              <div>
-                <p style={{ marginTop: "0.8rem" }}>
-                  Status: <strong>{simplexSetup.result.status === "optimal" ? "Optimal solution found" : simplexSetup.result.message}</strong>
-                </p>
-
-                <div className="table-wrap" style={{ marginTop: "0.65rem" }}>
-                  <table className="ops-table">
-                    <thead>
-                      <tr>
-                        <th>Product</th>
-                        <th>Optimal Units (xi)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {step1Data.parsedProducts.map((product, index) => (
-                        <tr key={product.id}>
-                          <td>{product.productName}</td>
-                          <td>{formatNumber(simplexSetup.result?.solution[index] ?? 0)}</td>
-                        </tr>
-                      ))}
-                      <tr>
-                        <td>Maximum contribution margin (Z)</td>
-                        <td>{formatPhp(simplexSetup.result.objectiveValue)}</td>
-                      </tr>
-                      {step1Data.fixedCostTotal !== null ? (
-                        <tr>
-                          <td>Maximum achievable profit (Z - Total Fixed Cost)</td>
-                          <td>{formatPhp(simplexSetup.result.objectiveValue - step1Data.fixedCostTotal)}</td>
-                        </tr>
-                      ) : null}
-                    </tbody>
-                  </table>
+        {currentStep === 8 ? (
+          <div>
+            {!weightedBreakEvenSummary ? (
+              <UserErrorPanel
+                title="Final Output Needs Weighted Break-Even Data"
+                message="Complete prior steps and provide valid today sales values before generating final output."
+              />
+            ) : (
+              <>
+                <div className="formula-box">
+                  <p>Compact final summary:</p>
+                  <p>Required units per product are weighted by today sales mix against total break-even units.</p>
                 </div>
 
-                <h3 style={{ marginTop: "1rem" }}>Simplex Pivot Steps</h3>
-                <div className="table-wrap" style={{ marginTop: "0.65rem" }}>
-                  <table className="ops-table">
-                    <thead>
-                      <tr>
-                        <th>Iteration</th>
-                        <th>Entering Variable</th>
-                        <th>Leaving Variable</th>
-                        <th>Pivot Position (row, col)</th>
-                        <th>Pivot Value</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {simplexSetup.result.iterations.slice(1).map((iteration) => (
-                        <tr key={`pivot-${iteration.iteration}`}>
-                          <td>{iteration.iteration}</td>
-                          <td>{iteration.entering ?? "-"}</td>
-                          <td>{iteration.leaving ?? "-"}</td>
-                          <td>
-                            {iteration.pivotRow ?? "-"}, {iteration.pivotCol ?? "-"}
-                          </td>
-                          <td>{iteration.pivotValue === undefined ? "-" : iteration.pivotValue.toFixed(6)}</td>
-                        </tr>
-                      ))}
-                      {simplexSetup.result.iterations.length <= 1 ? (
-                        <tr>
-                          <td colSpan={5}>No pivot required (initial tableau already optimal).</td>
-                        </tr>
-                      ) : null}
-                    </tbody>
-                  </table>
-                </div>
-
-                <h3 style={{ marginTop: "1rem" }}>Full Simplex Table (Iteration Format)</h3>
-                {simplexSetup.result.iterations.map((iteration) => (
-                  <div key={`tableau-${iteration.iteration}`} className="table-wrap" style={{ marginTop: "0.65rem" }}>
+                {weightedBreakEvenTotals ? (
+                  <div className="table-wrap" style={{ marginTop: "0.75rem" }}>
                     <table className="ops-table">
                       <thead>
                         <tr>
-                          <th>Iteration {iteration.iteration} Basis</th>
-                          {simplexSetup.result?.columnNames.map((column) => (
-                            <th key={`${iteration.iteration}-${column}`}>{column}</th>
-                          ))}
+                          <th>Final Totals</th>
+                          <th>Value</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {iteration.basicVariables.map((basicVariable, rowIndex) => (
-                          <tr key={`${iteration.iteration}-${basicVariable}-${rowIndex}`}>
-                            <td>{basicVariable}</td>
-                            {iteration.tableau[rowIndex].map((value, valueIndex) => (
-                              <td key={`${iteration.iteration}-${basicVariable}-${valueIndex}`}>{value.toFixed(3)}</td>
-                            ))}
-                          </tr>
-                        ))}
                         <tr>
-                          <td>Z</td>
-                          {iteration.tableau[iteration.tableau.length - 1].map((value, valueIndex) => (
-                            <td key={`${iteration.iteration}-z-${valueIndex}`}>{value.toFixed(3)}</td>
-                          ))}
+                          <td>Total Units Sold Today</td>
+                          <td>{formatNumber(weightedBreakEvenSummary.totalUnitsToday)}</td>
+                        </tr>
+                        <tr>
+                          <td>Total Break-even Units</td>
+                          <td>{formatNumber(weightedBreakEvenSummary.totalBreakEvenUnits)}</td>
+                        </tr>
+                        <tr>
+                          <td>Total Deficit Units</td>
+                          <td>{formatNumber(weightedBreakEvenTotals.totalDeficitUnits)}</td>
+                        </tr>
+                        <tr>
+                          <td>Products Needing More Sales</td>
+                          <td>{formatNumber(weightedBreakEvenTotals.productsNeedingMoreSales)}</td>
+                        </tr>
+                        <tr>
+                          <td>Total Revenue Today</td>
+                          <td>{formatPhp(weightedBreakEvenTotals.totalRevenueToday)}</td>
+                        </tr>
+                        <tr>
+                          <td>Total Profit Today</td>
+                          <td>{formatPhp(weightedBreakEvenTotals.totalProfitToday)}</td>
                         </tr>
                       </tbody>
                     </table>
                   </div>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
+                ) : null}
 
-        {currentStep === 9 ? (
-          <div>
-            <div className="formula-box">
-              <p>Summary is based on:</p>
-              <p>1) Profit Analysis from Step 4</p>
-              <p>2) Break-Even Analysis from Step 5</p>
-              <p>3) Simplex Optimization from Step 8</p>
-            </div>
+                <div className="table-wrap" style={{ marginTop: "0.75rem" }}>
+                  <table className="ops-table">
+                    <thead>
+                      <tr>
+                        <th>Product</th>
+                        <th>Required Units (Weighted BE)</th>
+                        <th>Actual Units Sold Today</th>
+                        <th>Status</th>
+                        <th>Deficit Units</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {weightedBreakEvenSummary.rows.map((row) => (
+                        <tr key={`weighted-row-${row.productName}`}>
+                          <td>{row.productName}</td>
+                          <td>{formatNumber(row.weightedBreakEvenUnits)}</td>
+                          <td>{formatNumber(row.actualUnitsSoldToday)}</td>
+                          <td>{row.status}</td>
+                          <td>{row.status === "needs more sales" ? formatNumber(row.deficitUnits) : "0"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
 
-            <div className="table-wrap" style={{ marginTop: "0.75rem" }}>
-              <table className="ops-table">
-                <thead>
-                  <tr>
-                    <th>Summary Item</th>
-                    <th>Result</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>Best product(s) to focus on</td>
-                    <td>
-                      {simplexSetup.result?.status === "optimal" && simplexSummary?.priorityProducts.length
-                        ? simplexSummary.priorityProducts.join(", ")
-                        : "Not determined yet"}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td>Profitability status</td>
-                    <td>{profitabilityStatus}</td>
-                  </tr>
-                  <tr>
-                    <td>Break-even insight</td>
-                    <td>{breakEvenInsight}</td>
-                  </tr>
-                  <tr>
-                    <td>Optimization recommendation</td>
-                    <td>{optimizationRecommendation}</td>
-                  </tr>
-                  <tr>
-                    <td>Maximum achievable profit</td>
-                    <td>{simplexSummary ? formatPhp(simplexSummary.maximumProfit) : "Not determined yet"}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+                <div style={{ marginTop: "0.85rem" }}>
+                  <p>Based on this, you should procure the following quantities of materials:</p>
+                  {materialProcurementRecommendations.length > 0 ? (
+                    <div className="table-wrap" style={{ marginTop: "0.55rem" }}>
+                      <table className="ops-table">
+                        <thead>
+                          <tr>
+                            <th>Material</th>
+                            <th>Required Quantity</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {materialProcurementRecommendations.map((row) => (
+                            <tr key={`material-plan-${row.material}`}>
+                              <td>{row.material}</td>
+                              <td>{formatNumber(row.requiredQuantity)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="muted">materials_data is unavailable or incomplete, so material procurement quantities are skipped.</p>
+                  )}
+                </div>
+
+                <div style={{ marginTop: "0.85rem" }}>
+                  <button type="button" onClick={addDataToSupabase} disabled={saveStatus.state === "saving"} style={{ maxWidth: "260px" }}>
+                    {saveStatus.state === "saving" ? "Saving Data..." : "Add Data to Supabase"}
+                  </button>
+                  {saveStatus.state === "success" || saveStatus.state === "error" ? (
+                    <p className="muted" style={{ marginTop: "0.45rem" }}>
+                      {saveStatus.message}
+                    </p>
+                  ) : null}
+                </div>
+              </>
+            )}
           </div>
         ) : null}
 

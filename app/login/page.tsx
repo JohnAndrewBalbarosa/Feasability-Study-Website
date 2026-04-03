@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import UserErrorPanel from "@/components/UserErrorPanel";
-import { SYSTEM_HOME_PATH } from "@/lib/authRoutes";
+import { resolveSystemPath } from "@/lib/authRoutes";
 import { getSessionAuthHeaders } from "@/lib/authClient";
 import { supabaseClient } from "@/lib/supabaseClient";
 
@@ -38,7 +38,7 @@ export default function LoginPage() {
         }
 
         const data = (await response.json()) as { systemPath?: string };
-        router.replace(data.systemPath ?? SYSTEM_HOME_PATH);
+        router.replace(resolveSystemPath(data.systemPath));
       } catch {
         // No active session or token, remain on login page.
       }
@@ -57,7 +57,7 @@ export default function LoginPage() {
 
     try {
       const redirectTo = `${window.location.origin}/auth/verify`;
-      const { error } = await supabaseClient.auth.signInWithOAuth({
+      const { data, error } = await supabaseClient.auth.signInWithOAuth({
         provider: "google",
         options: {
           redirectTo
@@ -67,6 +67,14 @@ export default function LoginPage() {
       if (error) {
         throw error;
       }
+
+      if (data?.url) {
+        window.location.assign(data.url);
+        return;
+      }
+
+      setLoading(false);
+      setError("Google sign-in did not return a redirect URL. Check Supabase Auth provider and redirect URL settings.");
     } catch (err) {
       const rawMessage = err instanceof Error ? err.message : "Could not start Google sign in.";
       if (rawMessage.toLowerCase().includes("provider is not enabled")) {

@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 
 import UserErrorPanel from "@/components/UserErrorPanel";
 import { useOrgAuth } from "@/hooks/useOrgAuth";
+import { getSessionAuthHeaders } from "@/lib/authClient";
+import { disableAllPageLocks, enableAllPageLocks, isLocksDisabledOverride, PLANNING_LOCKS_UPDATED_EVENT } from "@/lib/pageLocks";
 import {
   PLANNING_DATA_UPDATED_EVENT,
   buildProcurementCostPerUnitMap,
@@ -70,6 +72,9 @@ export default function MaterialsWorkspace() {
   const [nextProcurementId, setNextProcurementId] = useState(2);
   const [hasLoadedFromStorage, setHasLoadedFromStorage] = useState(false);
   const [showValidation, setShowValidation] = useState(false);
+  const [lockStatusLoading, setLockStatusLoading] = useState(true);
+  const [serverLockEnabled, setServerLockEnabled] = useState(false);
+  const [locksDisabledByUser, setLocksDisabledByUser] = useState(false);
 
   useEffect(() => {
     if (!shouldAutofillLocalInput()) {
@@ -122,6 +127,68 @@ export default function MaterialsWorkspace() {
       window.removeEventListener(PLANNING_DATA_UPDATED_EVENT, refreshProductOptions);
     };
   }, []);
+
+  useEffect(() => {
+    const syncDisabledLockState = () => {
+      setLocksDisabledByUser(isLocksDisabledOverride());
+    };
+
+    syncDisabledLockState();
+
+    window.addEventListener("storage", syncDisabledLockState);
+    window.addEventListener(PLANNING_LOCKS_UPDATED_EVENT, syncDisabledLockState as EventListener);
+
+    return () => {
+      window.removeEventListener("storage", syncDisabledLockState);
+      window.removeEventListener(PLANNING_LOCKS_UPDATED_EVENT, syncDisabledLockState as EventListener);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (authLoading || !authorized) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadLockStatus = async () => {
+      setLockStatusLoading(true);
+
+      try {
+        const headers = await getSessionAuthHeaders({ "Content-Type": "application/json" });
+        const response = await fetch("/api/locks/status", {
+          method: "GET",
+          headers
+        });
+
+        if (!response.ok) {
+          if (!cancelled) {
+            setServerLockEnabled(false);
+          }
+          return;
+        }
+
+        const data = (await response.json()) as { lockEnabled?: boolean };
+        if (!cancelled) {
+          setServerLockEnabled(Boolean(data.lockEnabled));
+        }
+      } catch {
+        if (!cancelled) {
+          setServerLockEnabled(false);
+        }
+      } finally {
+        if (!cancelled) {
+          setLockStatusLoading(false);
+        }
+      }
+    };
+
+    void loadLockStatus();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, authorized]);
 
   useEffect(() => {
     if (!hasLoadedFromStorage) {
@@ -344,6 +411,19 @@ export default function MaterialsWorkspace() {
     setShowValidation(true);
   };
 
+  const toggleLockMode = () => {
+    if (lockedMode) {
+      disableAllPageLocks();
+      setLocksDisabledByUser(true);
+      return;
+    }
+
+    enableAllPageLocks();
+    setLocksDisabledByUser(false);
+  };
+
+  const lockedMode = serverLockEnabled && !locksDisabledByUser;
+
   if (authLoading) {
     return (
       <main className="page-shell">
@@ -361,15 +441,18 @@ export default function MaterialsWorkspace() {
   return (
     <main className="page-shell">
       <section className="hero">
-        <h1>Material Requirements</h1>
+        <h1>{lockedMode ? "LOCKED PAGE" : "Material Requirements"}</h1>
         <p>
-          Define product-to-material usage and procurement data before simplex minimization and production feasibility checks. Product options are
-          referenced from Business Analysis.
+          Define product-to-material usage and procurement data for deterministic break-even and procurement planning. Product options are referenced
+          from Business Analysis.
         </p>
         <div className="nav">
-          <a href="/">Business Analysis</a>
-          <a href="/materials">Material Requirements</a>
+          <a href="/">{lockedMode ? "Unlocked Page" : "Business Analysis"}</a>
+          <a href="/materials">{lockedMode ? "Locked Page" : "Material Requirements"}</a>
           <a href="/analytics">Detailed Analytics</a>
+          <button type="button" onClick={toggleLockMode} style={{ maxWidth: "220px", marginLeft: "auto" }}>
+            {lockedMode ? "Enable Lock" : "Disable Lock"}
+          </button>
           <button type="button" onClick={signOut} style={{ maxWidth: "220px" }}>
             Sign Out ({email})
           </button>
@@ -377,11 +460,17 @@ export default function MaterialsWorkspace() {
       </section>
 
       <section className="card" style={{ marginTop: "1.25rem" }}>
-        <h2>MATERIAL REQUIREMENTS PAGE</h2>
+        <h2>{lockedMode ? "LOCKED PAGE" : "MATERIAL REQUIREMENTS PAGE"}</h2>
         <p className="muted">Required structure: Product | Material | Quantity Needed per Product</p>
         <p className="muted">
           Products are auto-listed from Business Analysis. Use + beside each product to add material rows.
         </p>
+        {lockStatusLoading ? <p className="muted">Checking lock status from Supabase...</p> : null}
+        {lockedMode ? (
+          <p className="muted" style={{ marginTop: "0.45rem" }}>
+            Locked mode is active from Supabase data. This page shows Materials Requirement only.
+          </p>
+        ) : null}
 
         {productOptions.length === 0 ? (
           <UserErrorPanel
@@ -403,6 +492,7 @@ export default function MaterialsWorkspace() {
                       onClick={() => addMaterialRowForProduct(productName)}
                       title={`Add material for ${productName}`}
                       aria-label={`Add material for ${productName}`}
+                      disabled={lockedMode}
                     >
                       +
                     </button>
@@ -431,6 +521,7 @@ export default function MaterialsWorkspace() {
                                 <select
                                   value={row.material}
                                   onChange={(event) => updateMaterialRow(row.id, "material", event.target.value)}
+                                  disabled={lockedMode}
                                 >
                                   <option value="">
                                     {procurementMaterialOptions.length > 0 ? "Select material from Procurement Data" : "Add procurement materials first"}
@@ -456,10 +547,16 @@ export default function MaterialsWorkspace() {
                                   value={row.quantityNeededPerProduct}
                                   onChange={(event) => updateMaterialRow(row.id, "quantityNeededPerProduct", event.target.value)}
                                   placeholder="0.00"
+                                  disabled={lockedMode}
                                 />
                               </td>
                               <td>
-                                <button type="button" onClick={() => removeMaterialRow(row.id)} style={{ maxWidth: "130px" }}>
+                                <button
+                                  type="button"
+                                  onClick={() => removeMaterialRow(row.id)}
+                                  style={{ maxWidth: "130px" }}
+                                  disabled={lockedMode}
+                                >
                                   Remove
                                 </button>
                               </td>
@@ -476,114 +573,118 @@ export default function MaterialsWorkspace() {
         )}
       </section>
 
-      <section className="card" style={{ marginTop: "1rem" }}>
-        <h2>Procurement Data</h2>
-        <p className="muted">Required structure: Material | Total Available | Total Procurement Cost (PHP)</p>
+      {!lockedMode ? (
+        <>
+          <section className="card" style={{ marginTop: "1rem" }}>
+            <h2>Procurement Data</h2>
+            <p className="muted">Required structure: Material | Total Available | Total Procurement Cost (PHP)</p>
 
-        <div className="table-wrap" style={{ marginTop: "0.7rem" }}>
-          <table className="ops-table">
-            <thead>
-              <tr>
-                <th>Material</th>
-                <th>Total Available</th>
-                <th>Total Procurement Cost (₱)</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {procurementRows.map((row) => (
-                <tr key={row.id}>
-                  <td>
-                    <input
-                      type="text"
-                      value={row.material}
-                      onChange={(event) => updateProcurementRow(row.id, "material", event.target.value)}
-                      placeholder="Example: Sugar"
-                    />
-                  </td>
-                  <td>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={row.totalAvailable}
-                      onChange={(event) => updateProcurementRow(row.id, "totalAvailable", event.target.value)}
-                      placeholder="0.00"
-                    />
-                  </td>
-                  <td>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={row.totalProcurementCost}
-                      onChange={(event) => updateProcurementRow(row.id, "totalProcurementCost", event.target.value)}
-                      placeholder="0.00"
-                    />
-                  </td>
-                  <td>
-                    <button
-                      type="button"
-                      onClick={() => removeProcurementRow(row.id)}
-                      disabled={procurementRows.length <= 1}
-                      style={{ maxWidth: "130px" }}
-                    >
-                      Remove
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <button type="button" onClick={addProcurementRow} style={{ marginTop: "0.75rem", maxWidth: "240px" }}>
-          Add Procurement Row
-        </button>
-      </section>
-
-      <section className="card" style={{ marginTop: "1rem" }}>
-        <h2>Validation</h2>
-        <button type="button" onClick={runValidation} style={{ maxWidth: "250px" }}>
-          Validate Material + Procurement Data
-        </button>
-
-        {showValidation ? (
-          validation.errors.length > 0 ? (
-            <UserErrorPanel title="Validation Failed" message={validation.errors.join(" ")} />
-          ) : (
-            <div className="formula-box" style={{ marginTop: "0.75rem" }}>
-              <p>System completeness status: Complete for material + procurement pages.</p>
-              <p>Simplex readiness: Ready for material-cost coefficient generation.</p>
-            </div>
-          )
-        ) : null}
-
-        {validation.procurementSummary.length > 0 ? (
-          <div className="table-wrap" style={{ marginTop: "0.75rem" }}>
-            <table className="ops-table">
-              <thead>
-                <tr>
-                  <th>Material</th>
-                  <th>Total Available</th>
-                  <th>Total Procurement Cost</th>
-                  <th>Cost per Unit</th>
-                </tr>
-              </thead>
-              <tbody>
-                {validation.procurementSummary.map((row) => (
-                  <tr key={`summary-${row.material}`}>
-                    <td>{row.material}</td>
-                    <td>{row.totalAvailable.toLocaleString("en-PH")}</td>
-                    <td>{formatPhp(row.totalProcurementCost)}</td>
-                    <td>{formatPhp(row.costPerUnit)}</td>
+            <div className="table-wrap" style={{ marginTop: "0.7rem" }}>
+              <table className="ops-table">
+                <thead>
+                  <tr>
+                    <th>Material</th>
+                    <th>Total Available</th>
+                    <th>Total Procurement Cost (₱)</th>
+                    <th>Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : null}
-      </section>
+                </thead>
+                <tbody>
+                  {procurementRows.map((row) => (
+                    <tr key={row.id}>
+                      <td>
+                        <input
+                          type="text"
+                          value={row.material}
+                          onChange={(event) => updateProcurementRow(row.id, "material", event.target.value)}
+                          placeholder="Example: Sugar"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={row.totalAvailable}
+                          onChange={(event) => updateProcurementRow(row.id, "totalAvailable", event.target.value)}
+                          placeholder="0.00"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={row.totalProcurementCost}
+                          onChange={(event) => updateProcurementRow(row.id, "totalProcurementCost", event.target.value)}
+                          placeholder="0.00"
+                        />
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          onClick={() => removeProcurementRow(row.id)}
+                          disabled={procurementRows.length <= 1}
+                          style={{ maxWidth: "130px" }}
+                        >
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <button type="button" onClick={addProcurementRow} style={{ marginTop: "0.75rem", maxWidth: "240px" }}>
+              Add Procurement Row
+            </button>
+          </section>
+
+          <section className="card" style={{ marginTop: "1rem" }}>
+            <h2>Validation</h2>
+            <button type="button" onClick={runValidation} style={{ maxWidth: "250px" }}>
+              Validate Material + Procurement Data
+            </button>
+
+            {showValidation ? (
+              validation.errors.length > 0 ? (
+                <UserErrorPanel title="Validation Failed" message={validation.errors.join(" ")} />
+              ) : (
+                <div className="formula-box" style={{ marginTop: "0.75rem" }}>
+                  <p>System completeness status: Complete for material + procurement pages.</p>
+                  <p>Material-to-cost readiness: Ready for weighted break-even based procurement planning.</p>
+                </div>
+              )
+            ) : null}
+
+            {validation.procurementSummary.length > 0 ? (
+              <div className="table-wrap" style={{ marginTop: "0.75rem" }}>
+                <table className="ops-table">
+                  <thead>
+                    <tr>
+                      <th>Material</th>
+                      <th>Total Available</th>
+                      <th>Total Procurement Cost</th>
+                      <th>Cost per Unit</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {validation.procurementSummary.map((row) => (
+                      <tr key={`summary-${row.material}`}>
+                        <td>{row.material}</td>
+                        <td>{row.totalAvailable.toLocaleString("en-PH")}</td>
+                        <td>{formatPhp(row.totalProcurementCost)}</td>
+                        <td>{formatPhp(row.costPerUnit)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+          </section>
+        </>
+      ) : null}
     </main>
   );
 }
