@@ -71,6 +71,19 @@ create table if not exists public.procurement_data (
   data jsonb not null
 );
 
+create table if not exists public.basis_transaction_logs (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  action text not null check (action in ('create', 'delete')),
+  table_name text not null,
+  record_id uuid not null,
+  created_by_email text not null,
+  payload jsonb null
+);
+
+create index if not exists idx_basis_transaction_logs_created_at on public.basis_transaction_logs (created_at desc);
+create index if not exists idx_basis_transaction_logs_record_id on public.basis_transaction_logs (record_id);
+
 -- Optional table for raw procurement transactions if you want granular auditability.
 create table if not exists public.procurement_transactions (
   id uuid primary key default gen_random_uuid(),
@@ -90,6 +103,7 @@ alter table public.pipeline_deletion_logs enable row level security;
 alter table public.business_analysis_data enable row level security;
 alter table public.materials_data enable row level security;
 alter table public.procurement_data enable row level security;
+alter table public.basis_transaction_logs enable row level security;
 
 -- Keep strict by default; API route uses service role key for server-side inserts/reads.
 drop policy if exists "deny_all_pipeline_runs" on public.pipeline_runs;
@@ -100,6 +114,7 @@ drop policy if exists "deny_all_pipeline_deletion_logs" on public.pipeline_delet
 drop policy if exists "deny_all_business_analysis_data" on public.business_analysis_data;
 drop policy if exists "deny_all_materials_data" on public.materials_data;
 drop policy if exists "deny_all_procurement_data" on public.procurement_data;
+drop policy if exists "deny_all_basis_transaction_logs" on public.basis_transaction_logs;
 
 create policy "deny_all_pipeline_runs" on public.pipeline_runs for all using (false);
 create policy "deny_all_procurement_transactions" on public.procurement_transactions for all using (false);
@@ -109,5 +124,6 @@ create policy "deny_all_pipeline_deletion_logs" on public.pipeline_deletion_logs
 create policy "deny_all_business_analysis_data" on public.business_analysis_data for all using (false);
 create policy "deny_all_materials_data" on public.materials_data for all using (false);
 create policy "deny_all_procurement_data" on public.procurement_data for all using (false);
+create policy "deny_all_basis_transaction_logs" on public.basis_transaction_logs for all using (false);
 
 notify pgrst, 'reload schema';

@@ -101,6 +101,7 @@ type WeightedBreakEvenRow = {
   actualUnitsSoldToday: number;
   salesRatio: number;
   weightedBreakEvenUnits: number;
+  weightedTargetProfit: number;
   status: "needs more sales" | "meets requirement";
   deficitUnits: number;
   revenueToday: number;
@@ -205,6 +206,20 @@ function formatNumber(value: number): string {
   }
 
   return Number.isInteger(value) ? value.toLocaleString("en-PH") : value.toLocaleString("en-PH", { maximumFractionDigits: 4 });
+}
+
+function getStep8ProfitDisplay(value: number): { label: string; amount: number } {
+  if (value < 0) {
+    return {
+      label: "Total Needed Contribution To Break-even",
+      amount: Math.abs(value)
+    };
+  }
+
+  return {
+    label: "Total Profit",
+    amount: value
+  };
 }
 
 function createGraphPoints(
@@ -688,8 +703,9 @@ export default function BusinessAnalysisWorkspace() {
       const status: WeightedBreakEvenRow["status"] =
         actualUnitsSoldToday < weightedBreakEvenUnits ? "needs more sales" : "meets requirement";
       const deficitUnits = status === "needs more sales" ? weightedBreakEvenUnits - actualUnitsSoldToday : 0;
+      const weightedTargetProfit = weightedBreakEvenUnits * product.sellingPrice;
       const revenueToday = actualUnitsSoldToday * product.sellingPrice;
-      const profitToday = revenueToday - actualUnitsSoldToday * product.variableCost;
+      const profitToday = weightedTargetProfit - revenueToday;
 
       return {
         productName: product.productName,
@@ -697,6 +713,7 @@ export default function BusinessAnalysisWorkspace() {
         actualUnitsSoldToday,
         salesRatio,
         weightedBreakEvenUnits,
+        weightedTargetProfit,
         status,
         deficitUnits,
         revenueToday,
@@ -964,6 +981,7 @@ export default function BusinessAnalysisWorkspace() {
       productName: row.productName,
       revenuePerItem: row.revenuePerItem,
       weightedBreakEvenUnits: row.weightedBreakEvenUnits,
+      weightedTargetProfit: row.weightedTargetProfit,
       actualUnitsSoldToday: row.actualUnitsSoldToday,
       deficitUnits: row.deficitUnits,
       revenueToday: row.revenueToday,
@@ -1003,6 +1021,23 @@ export default function BusinessAnalysisWorkspace() {
     } catch {
       setSaveStatus({ state: "error", message: "Failed to save basis data to Supabase." });
     }
+  };
+
+  const step8ProfitDisplay = useMemo(() => {
+    if (!weightedBreakEvenTotals) {
+      return null;
+    }
+
+    return getStep8ProfitDisplay(weightedBreakEvenTotals.totalProfitToday);
+  }, [weightedBreakEvenTotals]);
+
+  const handlePrimaryAction = () => {
+    if (currentStep === STEP_TITLES.length) {
+      void addDataToSupabase();
+      return;
+    }
+
+    goNext();
   };
 
   const profitabilityStatus =
@@ -1676,8 +1711,8 @@ export default function BusinessAnalysisWorkspace() {
                           <td>{formatPhp(weightedBreakEvenTotals.totalRevenueToday)}</td>
                         </tr>
                         <tr>
-                          <td>Total Profit Today</td>
-                          <td>{formatPhp(weightedBreakEvenTotals.totalProfitToday)}</td>
+                          <td>{step8ProfitDisplay?.label ?? "Total Profit"}</td>
+                          <td>{formatPhp(step8ProfitDisplay?.amount ?? 0)}</td>
                         </tr>
                       </tbody>
                     </table>
@@ -1735,16 +1770,11 @@ export default function BusinessAnalysisWorkspace() {
                   )}
                 </div>
 
-                <div style={{ marginTop: "0.85rem" }}>
-                  <button type="button" onClick={addDataToSupabase} disabled={saveStatus.state === "saving"} style={{ maxWidth: "260px" }}>
-                    {saveStatus.state === "saving" ? "Saving Data..." : "Add Data to Supabase"}
-                  </button>
-                  {saveStatus.state === "success" || saveStatus.state === "error" ? (
-                    <p className="muted" style={{ marginTop: "0.45rem" }}>
-                      {saveStatus.message}
-                    </p>
-                  ) : null}
-                </div>
+                {saveStatus.state === "success" || saveStatus.state === "error" ? (
+                  <p className="muted" style={{ marginTop: "0.85rem" }}>
+                    {saveStatus.message}
+                  </p>
+                ) : null}
               </>
             )}
           </div>
@@ -1756,11 +1786,17 @@ export default function BusinessAnalysisWorkspace() {
           </button>
           <button
             type="button"
-            onClick={goNext}
-            disabled={currentStep === STEP_TITLES.length}
+            onClick={handlePrimaryAction}
+            disabled={currentStep === STEP_TITLES.length && (saveStatus.state === "saving" || saveStatus.state === "success")}
             style={{ maxWidth: "170px", justifySelf: "end" }}
           >
-            Next Step
+            {currentStep === STEP_TITLES.length
+              ? saveStatus.state === "saving"
+                ? "Adding..."
+                : saveStatus.state === "success"
+                  ? "Added"
+                  : "Add to Supabase"
+              : "Next Step"}
           </button>
         </div>
       </section>

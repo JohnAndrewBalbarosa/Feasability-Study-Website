@@ -34,10 +34,14 @@ export async function POST(request: Request) {
 
   const createdByEmail = authResult.user.email;
 
-  const { error: businessError } = await supabaseAdmin.from("business_analysis_data").insert({
+  const { data: businessInserted, error: businessError } = await supabaseAdmin
+    .from("business_analysis_data")
+    .insert({
     created_by_email: createdByEmail,
     data: parsed.data.businessAnalysisData
-  });
+    })
+    .select("id, created_at, data")
+    .single();
 
   if (businessError) {
     if (isMissingTableOrSchemaCacheError(businessError.message)) {
@@ -53,11 +57,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: `Failed to insert business_analysis_data: ${businessError.message}` }, { status: 500 });
   }
 
-  if (parsed.data.materialsData.length > 0) {
-    const { error: materialsError } = await supabaseAdmin.from("materials_data").insert({
+  if (businessInserted) {
+    await supabaseAdmin.from("basis_transaction_logs").insert({
+      action: "create",
+      table_name: "business_analysis_data",
+      record_id: businessInserted.id,
       created_by_email: createdByEmail,
-      data: parsed.data.materialsData
+      payload: businessInserted
     });
+  }
+
+  if (parsed.data.materialsData.length > 0) {
+    const { data: materialsInserted, error: materialsError } = await supabaseAdmin
+      .from("materials_data")
+      .insert({
+        created_by_email: createdByEmail,
+        data: parsed.data.materialsData
+      })
+      .select("id, created_at, data")
+      .single();
 
     if (materialsError) {
       if (isMissingTableOrSchemaCacheError(materialsError.message)) {
@@ -72,13 +90,27 @@ export async function POST(request: Request) {
 
       return NextResponse.json({ message: `Failed to insert materials_data: ${materialsError.message}` }, { status: 500 });
     }
+
+    if (materialsInserted) {
+      await supabaseAdmin.from("basis_transaction_logs").insert({
+        action: "create",
+        table_name: "materials_data",
+        record_id: materialsInserted.id,
+        created_by_email: createdByEmail,
+        payload: materialsInserted
+      });
+    }
   }
 
   if (parsed.data.procurementData.length > 0) {
-    const { error: procurementError } = await supabaseAdmin.from("procurement_data").insert({
-      created_by_email: createdByEmail,
-      data: parsed.data.procurementData
-    });
+    const { data: procurementInserted, error: procurementError } = await supabaseAdmin
+      .from("procurement_data")
+      .insert({
+        created_by_email: createdByEmail,
+        data: parsed.data.procurementData
+      })
+      .select("id, created_at, data")
+      .single();
 
     if (procurementError) {
       if (isMissingTableOrSchemaCacheError(procurementError.message)) {
@@ -92,6 +124,16 @@ export async function POST(request: Request) {
       }
 
       return NextResponse.json({ message: `Failed to insert procurement_data: ${procurementError.message}` }, { status: 500 });
+    }
+
+    if (procurementInserted) {
+      await supabaseAdmin.from("basis_transaction_logs").insert({
+        action: "create",
+        table_name: "procurement_data",
+        record_id: procurementInserted.id,
+        created_by_email: createdByEmail,
+        payload: procurementInserted
+      });
     }
   }
 
