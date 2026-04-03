@@ -3,10 +3,7 @@
 import { useMemo, useState } from "react";
 
 import { useOrgAuth } from "@/hooks/useOrgAuth";
-import { disableAllPageLocks, enableAllPageLocks, isLocksDisabledOverride, PLANNING_LOCKS_UPDATED_EVENT } from "@/lib/pageLocks";
-import {
-  
-} from "@/lib/planningStorage";
+import { disableAllPageLocks, enableAllPageLocks } from "@/lib/pageLocks";
 
 import { INITIAL_MATERIAL_ROWS, INITIAL_PROCUREMENT_ROWS } from "../constants";
 import {
@@ -27,7 +24,7 @@ export function useMaterialsWorkspaceState() {
   const [procurementRows, setProcurementRows] = useState<ProcurementRow[]>(INITIAL_PROCUREMENT_ROWS);
   const [productOptions, setProductOptions] = useState<string[]>([]);
   const [nextMaterialId, setNextMaterialId] = useState(2);
-  const [nextProcurementId, setNextProcurementId] = useState(2);
+  const [nextProcurementId, setNextProcurementId] = useState(1);
   const [hasLoadedFromStorage, setHasLoadedFromStorage] = useState(false);
   const [showValidation, setShowValidation] = useState(false);
   const [lockStatusLoading, setLockStatusLoading] = useState(true);
