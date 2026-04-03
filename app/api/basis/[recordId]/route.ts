@@ -43,8 +43,7 @@ export async function DELETE(request: Request, context: RouteContext) {
     action: "delete",
     table_name: "business_analysis_data",
     record_id: recordId,
-    created_by_email: authResult.user.email,
-    payload: existingRecord
+    created_by_email: authResult.user.email
   });
 
   return NextResponse.json({ deleted: true, id: recordId }, { status: 200 });

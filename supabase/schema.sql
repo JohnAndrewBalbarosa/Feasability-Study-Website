@@ -77,9 +77,10 @@ create table if not exists public.basis_transaction_logs (
   action text not null check (action in ('create', 'delete')),
   table_name text not null,
   record_id uuid not null,
-  created_by_email text not null,
-  payload jsonb null
+  created_by_email text not null
 );
+
+alter table public.basis_transaction_logs drop column if exists payload;
 
 create index if not exists idx_basis_transaction_logs_created_at on public.basis_transaction_logs (created_at desc);
 create index if not exists idx_basis_transaction_logs_record_id on public.basis_transaction_logs (record_id);

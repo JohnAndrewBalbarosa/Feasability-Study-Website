@@ -11,7 +11,7 @@ export async function GET(request: Request) {
 
   const { data, error } = await supabaseAdmin
     .from("basis_transaction_logs")
-    .select("id, created_at, action, table_name, record_id, created_by_email, payload")
+    .select("id, created_at, action, table_name, record_id, created_by_email")
     .order("created_at", { ascending: false })
     .limit(300);
 

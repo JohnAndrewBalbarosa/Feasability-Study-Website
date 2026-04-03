@@ -62,8 +62,7 @@ export async function POST(request: Request) {
       action: "create",
       table_name: "business_analysis_data",
       record_id: businessInserted.id,
-      created_by_email: createdByEmail,
-      payload: businessInserted
+      created_by_email: createdByEmail
     });
   }
 
@@ -96,8 +95,7 @@ export async function POST(request: Request) {
         action: "create",
         table_name: "materials_data",
         record_id: materialsInserted.id,
-        created_by_email: createdByEmail,
-        payload: materialsInserted
+        created_by_email: createdByEmail
       });
     }
   }
@@ -131,8 +129,7 @@ export async function POST(request: Request) {
         action: "create",
         table_name: "procurement_data",
         record_id: procurementInserted.id,
-        created_by_email: createdByEmail,
-        payload: procurementInserted
+        created_by_email: createdByEmail
       });
     }
   }

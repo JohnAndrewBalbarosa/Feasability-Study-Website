@@ -13,7 +13,6 @@ type TransactionLog = {
   table_name: string;
   record_id: string;
   created_by_email: string;
-  payload?: unknown;
 };
 
 function formatDate(value: string): string {
@@ -143,7 +142,6 @@ export default function LogsWorkspace() {
                   <th>Table</th>
                   <th>Record ID</th>
                   <th>User</th>
-                  <th>Payload Preview</th>
                 </tr>
               </thead>
               <tbody>
@@ -154,11 +152,6 @@ export default function LogsWorkspace() {
                     <td>{log.table_name}</td>
                     <td>{log.record_id}</td>
                     <td>{log.created_by_email}</td>
-                    <td>
-                      <pre style={{ margin: 0, whiteSpace: "pre-wrap", maxWidth: "360px" }}>
-                        {JSON.stringify(log.payload ?? {}, null, 2)}
-                      </pre>
-                    </td>
                   </tr>
                 ))}
               </tbody>
