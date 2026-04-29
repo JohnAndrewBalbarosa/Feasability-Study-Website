@@ -1,4 +1,6 @@
 import UserErrorPanel from "@/components/UserErrorPanel";
+import PlainLanguageBox from "../ui/PlainLanguageBox";
+import WhatNextPanel from "../WhatNextPanel";
 
 import type { MaterialProcurementRecommendation, SaveStatus, WeightedBreakEvenSummary } from "../../types";
 import type { WeightedBreakEvenTotals } from "../../selectors/weightedSelectors";
@@ -12,6 +14,7 @@ type Props = {
   step8ProfitDisplay: { label: string; amount: number } | null;
   materialProcurementRecommendations: MaterialProcurementRecommendation[];
   saveStatus: SaveStatus;
+  onStartNew?: () => void;
 };
 
 export default function Step8Section({
@@ -19,7 +22,8 @@ export default function Step8Section({
   weightedBreakEvenTotals,
   step8ProfitDisplay,
   materialProcurementRecommendations,
-  saveStatus
+  saveStatus,
+  onStartNew
 }: Props) {
   if (!weightedBreakEvenSummary) {
     return (
@@ -34,10 +38,10 @@ export default function Step8Section({
 
   return (
     <div>
-      <div className="formula-box">
-        <p>Compact final summary:</p>
-        <p>Required units per product are weighted by today sales mix against total break-even units.</p>
-      </div>
+      <PlainLanguageBox title="You're on the last step!">
+        Review your totals below. When everything looks right, click &ldquo;Save Today&rsquo;s Results&rdquo; to record this entry.
+        Your procurement recommendations are shown at the bottom.
+      </PlainLanguageBox>
 
       {weightedBreakEvenTotals ? (
         <Step8TotalsTable
@@ -50,10 +54,10 @@ export default function Step8Section({
       <Step8WeightedRowsTable weightedBreakEvenSummary={weightedBreakEvenSummary} />
       <Step8MaterialsTable materialProcurementRecommendations={materialProcurementRecommendations} />
 
-      {saveStatus.state === "success" || saveStatus.state === "error" ? (
-        <p className="muted" style={{ marginTop: "0.85rem" }}>
-          {saveStatus.message}
-        </p>
+      {saveStatus.state === "success" && onStartNew ? (
+        <WhatNextPanel onStartNew={onStartNew} />
+      ) : saveStatus.state === "error" ? (
+        <p className="muted" style={{ marginTop: "0.85rem" }}>{saveStatus.message}</p>
       ) : null}
     </div>
   );
