@@ -63,7 +63,13 @@ export default function BusinessAnalysisStepSection(props: Props) {
     case 4:
       return <Step4Section profitAnalysis={props.profitAnalysis} step1Data={props.step1Data} profitabilityStatus={props.profitabilityStatus} />;
     case 5:
-      return <Step5Section breakEvenAnalysis={props.breakEvenAnalysis} breakEvenInsight={props.breakEvenInsight} />;
+      return (
+        <Step5Section
+          breakEvenAnalysis={props.breakEvenAnalysis}
+          breakEvenInsight={props.breakEvenInsight}
+          unitsSoldTotal={props.breakEvenAnalysis?.totalUnitsSold}
+        />
+      );
     case 6:
       return <Step6Section graphData={props.graphData} graphPathData={props.graphPathData} />;
     case 7:

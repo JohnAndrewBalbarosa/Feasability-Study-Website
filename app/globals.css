@@ -618,3 +618,304 @@ button:disabled {
     opacity: 1;
   }
 }
+
+/* ============================================================
+   NEW COMPONENT STYLES — appended, no existing rules modified
+   ============================================================ */
+
+/* Visually-hidden utility (screen-reader only) */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* KPI Card Grid */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 0.85rem;
+  margin-top: 0.85rem;
+}
+
+.kpi-card {
+  border: 2px solid #101010;
+  background: #fffef5;
+  padding: 0.9rem 1rem;
+  box-shadow: 4px 4px 0 #101010;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.kpi-card[data-tone="positive"] {
+  background: #e6f9ee;
+}
+
+.kpi-card[data-tone="negative"] {
+  background: #fde8e1;
+}
+
+.kpi-card__icon {
+  width: 26px;
+  height: 26px;
+  opacity: 0.8;
+}
+
+.kpi-card__label {
+  font-size: 0.76rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.72;
+  font-family: var(--font-heading), sans-serif;
+}
+
+.kpi-card__value {
+  font-family: var(--font-heading), sans-serif;
+  font-size: clamp(1.2rem, 0.8rem + 1.2vw, 1.7rem);
+  font-weight: 700;
+  line-height: 1.1;
+  word-break: break-word;
+}
+
+.kpi-card__hint {
+  font-size: 0.76rem;
+  opacity: 0.65;
+  line-height: 1.4;
+}
+
+/* Status Badge */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.18rem 0.55rem;
+  border: 1.5px solid #101010;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border-radius: 999px;
+  font-family: var(--font-heading), sans-serif;
+  white-space: nowrap;
+}
+
+.status-badge[data-status="profit"] {
+  background: #c5f0d2;
+}
+
+.status-badge[data-status="loss"] {
+  background: #ffd1c4;
+}
+
+/* Bar Flow (waterfall) */
+.bar-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin-top: 0.6rem;
+}
+
+.bar-flow__row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) 3fr auto;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.bar-flow__label {
+  font-weight: 600;
+  font-size: 0.88rem;
+}
+
+.bar-flow__track {
+  height: 22px;
+  border: 2px solid #101010;
+  background: #fff;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 2px 2px 0 #101010;
+}
+
+.bar-flow__fill {
+  height: 100%;
+  transition: width 260ms ease-out;
+  min-width: 4px;
+}
+
+.bar-flow__fill[data-tone="revenue"] {
+  background: #00a8a8;
+}
+
+.bar-flow__fill[data-tone="varcost"] {
+  background: #ff8c52;
+}
+
+.bar-flow__fill[data-tone="fixed"] {
+  background: #ff5a36;
+}
+
+.bar-flow__fill[data-tone="positive"] {
+  background: #2bbf5e;
+}
+
+.bar-flow__fill[data-tone="negative"] {
+  background: #d93b21;
+}
+
+.bar-flow__amount {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 0.88rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Progress Meter */
+.progress-meter {
+  margin-top: 0.75rem;
+}
+
+.progress-meter__bar {
+  height: 30px;
+  border: 2px solid #101010;
+  background: #e8e8e4;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 3px 3px 0 #101010;
+}
+
+.progress-meter__fill {
+  height: 100%;
+  background: linear-gradient(90deg, #ffe04d 0%, #2bbf5e 100%);
+  transition: width 340ms ease-out;
+}
+
+.progress-meter__fill[data-overshoot="true"] {
+  background: #2bbf5e;
+}
+
+.progress-meter__caption {
+  margin-top: 0.45rem;
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.progress-meter__pct {
+  font-size: 1.05rem;
+}
+
+/* Chart Tooltip */
+.chart-tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: #101010;
+  color: #fff6d6;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.8rem;
+  font-family: var(--font-heading), sans-serif;
+  border: 2px solid #fff6d6;
+  box-shadow: 3px 3px 0 #ff5a36;
+  transform: translate(-50%, calc(-100% - 12px));
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 100ms ease-out;
+  z-index: 10;
+  line-height: 1.6;
+}
+
+.chart-tooltip[data-visible="true"] {
+  opacity: 1;
+}
+
+/* Chart zone labels */
+.chart-zone-label {
+  font-family: var(--font-heading), sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  pointer-events: none;
+  font-size: 13px;
+}
+
+/* Plain Language Box */
+.plain-box {
+  margin-top: 0.75rem;
+  border-left: 5px solid #ff5a36;
+  background: #fffef5;
+  padding: 0.65rem 0.9rem;
+  border-top: 2px solid #101010;
+  border-right: 2px solid #101010;
+  border-bottom: 2px solid #101010;
+  box-shadow: 3px 3px 0 #101010;
+}
+
+.plain-box__title {
+  font-weight: 700;
+  font-family: var(--font-heading), sans-serif;
+  margin-bottom: 0.28rem;
+  font-size: 0.88rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.plain-box__body {
+  font-size: 0.94rem;
+  line-height: 1.55;
+}
+
+/* Collapsible detail toggle */
+details.detail-toggle {
+  margin-top: 0.75rem;
+}
+
+details.detail-toggle summary {
+  cursor: pointer;
+  font-family: var(--font-heading), sans-serif;
+  font-size: 0.86rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  opacity: 0.7;
+  padding: 0.3rem 0;
+  user-select: none;
+}
+
+details.detail-toggle summary:hover {
+  opacity: 1;
+}
+
+details.detail-toggle[open] summary {
+  opacity: 1;
+  margin-bottom: 0.5rem;
+}
+
+/* Upgraded line legend items */
+.legend-swatch {
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid #101010;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+/* Focus ring for accessibility */
+button:focus-visible,
+a:focus-visible,
+[tabindex]:focus-visible {
+  outline: 3px solid #1a73e8;
+  outline-offset: 2px;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .bar-flow__fill,
+  .progress-meter__fill,
+  .chart-tooltip {
+    transition: none !important;
+  }
+}
