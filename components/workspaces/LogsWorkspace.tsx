@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import UserErrorPanel from "@/components/UserErrorPanel";
+import PageTopBar from "@/components/PageTopBar";
 import { useOrgAuth } from "@/hooks/useOrgAuth";
 import { getSessionAuthHeaders } from "@/lib/authClient";
 import { useGsapPageReveal } from "@/hooks/useGsapPageReveal";
@@ -98,21 +99,12 @@ export default function LogsWorkspace() {
   }
 
   return (
+    <>
+      <PageTopBar email={email} onSignOut={signOut} />
     <main ref={pageRef} className="page-shell">
-      <section className="hero">
-        <h1>Basis Transaction Logs</h1>
-        <p>Creation and deletion logs for basis records are listed below.</p>
-        <div className="nav">
-          <a href="/">Summary Dashboard</a>
-          <a href="/materials">Material Requirements</a>
-          <a href="/analytics">Detailed Analytics</a>
-          <a href="/logs">Transaction Logs</a>
-          <a href="/about">About Developer</a>
-          <button type="button" onClick={signOut} style={{ width: "fit-content", maxWidth: "none", whiteSpace: "nowrap" }}>
-            Sign Out ({email})
-          </button>
-        </div>
-      </section>
+      <div className="page-heading">
+        <h1>Activity Logs</h1>
+      </div>
 
       {error ? <UserErrorPanel title="Transaction Logs Are Temporarily Unavailable" message={error} /> : null}
 
@@ -165,5 +157,6 @@ export default function LogsWorkspace() {
         )}
       </section>
     </main>
+    </>
   );
 }

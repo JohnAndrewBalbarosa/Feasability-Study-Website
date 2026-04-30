@@ -3,6 +3,7 @@
 import { useRef } from "react";
 
 import UserErrorPanel from "@/components/UserErrorPanel";
+import PageTopBar from "@/components/PageTopBar";
 import { useGsapPageReveal } from "@/hooks/useGsapPageReveal";
 import { useMaterialsActions } from "./handlers/useMaterialsActions";
 import { useMaterialsWorkspaceState } from "./hooks/useMaterialsWorkspaceState";
@@ -39,33 +40,23 @@ export default function MaterialsWorkspace() {
   }
 
   return (
+    <>
+      <PageTopBar
+        email={state.email}
+        onSignOut={state.signOut}
+        onToggleLockMode={state.toggleLockMode}
+        isLocked={state.lockedMode}
+        lockStatusLoading={state.lockStatusLoading}
+      />
     <main ref={pageRef} className="page-shell">
-      <section className="hero">
-        <h1>{state.lockedMode ? "LOCKED PAGE" : "Material Requirements"}</h1>
-        <p>
-          Define product-to-material usage and procurement data for deterministic break-even and procurement planning. Product options are referenced
-          from Business Analysis.
-        </p>
-        <div className="nav">
-          <a href="/">{state.lockedMode ? "Unlocked Page" : "Summary Dashboard"}</a>
-          <a href="/materials">{state.lockedMode ? "Locked Page" : "Material Requirements"}</a>
-          <a href="/analytics">Detailed Analytics</a>
-          <a href="/about">About Developer</a>
-          <button type="button" onClick={state.toggleLockMode} style={{ maxWidth: "220px", marginLeft: "auto" }}>
-            {state.lockedMode ? "Disable Lock" : "Enable Lock"}
-          </button>
-          <button type="button" onClick={state.signOut} style={{ width: "fit-content", maxWidth: "none", whiteSpace: "nowrap" }}>
-            Sign Out ({state.email})
-          </button>
-        </div>
-      </section>
+      <div className="page-heading">
+        <h1>Materials Setup</h1>
+      </div>
 
       <section className="card" style={{ marginTop: "1.25rem" }}>
-        <h2>{state.lockedMode ? "LOCKED PAGE" : "MATERIAL REQUIREMENTS PAGE"}</h2>
-        <p className="muted">Required structure: Product | Material | Unit | Quantity Needed per Product</p>
-        <p className="muted">Products are auto-listed from Business Analysis. Use + beside each product to add material rows.</p>
-        {state.lockStatusLoading ? <p className="muted">Checking lock status from Supabase...</p> : null}
-        {state.lockedMode ? <p className="muted" style={{ marginTop: "0.45rem" }}>Locked mode is active from Supabase data. This page shows Materials Requirement only.</p> : null}
+        <h2>Material Requirements</h2>
+        <p className="muted">Each product needs a list of materials. Use the + button next to a product to add material rows.</p>
+        {state.lockedMode ? <p className="muted" style={{ marginTop: "0.45rem" }}>Lock mode is active — this page is read-only.</p> : null}
 
         {state.productOptions.length === 0 ? (
           <UserErrorPanel
@@ -105,5 +96,6 @@ export default function MaterialsWorkspace() {
         </>
       ) : null}
     </main>
+    </>
   );
 }

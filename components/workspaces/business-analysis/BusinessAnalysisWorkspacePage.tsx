@@ -6,7 +6,7 @@ import { useOrgAuth } from "@/hooks/useOrgAuth";
 import UserErrorPanel from "@/components/UserErrorPanel";
 import { useGsapPageReveal } from "@/hooks/useGsapPageReveal";
 import { STEP_TITLES } from "./constants";
-import BusinessHero from "./components/BusinessHero";
+import PageTopBar from "@/components/PageTopBar";
 import LockedProcurementPage from "./components/LockedProcurementPage";
 import StepNavigator from "./components/StepNavigator";
 import BusinessAnalysisStepSection from "./components/steps/BusinessAnalysisStepSection";
@@ -136,15 +136,26 @@ export default function BusinessAnalysisWorkspace() {
     );
   }
 
+  function handleStartNew() {
+    state.setSaveStatus({ state: "idle", message: "" });
+    state.setCurrentStep(3);
+  }
+
   return (
-    <main ref={pageRef} className="page-shell">
-      <BusinessHero email={email} onToggleLockMode={saveHandlers.toggleLockMode} onSignOut={signOut} />
-      <section className="card" style={{ marginTop: "1.25rem" }}>
+    <>
+      <PageTopBar
+        email={email}
+        onSignOut={signOut}
+        onToggleLockMode={saveHandlers.toggleLockMode}
+        isLocked={businessPagesLocked}
+        lockStatusLoading={state.lockStatusLoading}
+      />
+      <main ref={pageRef} className="page-shell">
+      <section className="card" style={{ marginTop: 0 }}>
         <StepNavigator
           stepTitles={STEP_TITLES}
           currentStep={state.currentStep}
           isLocked={businessPagesLocked}
-          lockStatusLoading={state.lockStatusLoading}
           onStepChange={(step) => state.setCurrentStep(step <= state.currentStep ? step : state.currentStep)}
         />
         {state.stepErrors.length > 0 ? (
@@ -174,6 +185,7 @@ export default function BusinessAnalysisWorkspace() {
           onUpdateCostRow={rowHandlers.updateCostRow}
           onAddCostRow={rowHandlers.addCostRow}
           onRemoveCostRow={rowHandlers.removeCostRow}
+          onStartNew={handleStartNew}
         />
 
         <div className="wizard-nav">
@@ -196,6 +208,7 @@ export default function BusinessAnalysisWorkspace() {
           </button>
         </div>
       </section>
-    </main>
+      </main>
+    </>
   );
 }

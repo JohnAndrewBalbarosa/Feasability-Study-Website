@@ -3,6 +3,7 @@
 import { useRef } from "react";
 
 import UserErrorPanel from "@/components/UserErrorPanel";
+import PageTopBar from "@/components/PageTopBar";
 import { useGsapPageReveal } from "@/hooks/useGsapPageReveal";
 import { useAnalyticsActions } from "./handlers/useAnalyticsActions";
 import { useAnalyticsWorkspaceState } from "./hooks/useAnalyticsWorkspaceState";
@@ -32,32 +33,22 @@ export default function AnalyticsPage() {
   }
 
   return (
-    <main ref={pageRef} className="page-shell">
-      <section className="hero">
-        <h1>Detailed Analytics</h1>
-        <p>Supabase basis records are shown below by date and product. Green rows indicate profit or break-even, and red rows indicate loss.</p>
-        <div className="nav">
-          <a href="/">{state.lockedMode ? "Unlocked Page" : "Summary Dashboard"}</a>
-          <a href="/materials">{state.lockedMode ? "Locked Page" : "Material Requirements"}</a>
-          <a href="/analytics">Detailed Analytics</a>
-          <a href="/logs">Transaction Logs</a>
-          <a href="/about">About Developer</a>
-          <button type="button" onClick={state.signOut} style={{ width: "fit-content", maxWidth: "none", whiteSpace: "nowrap" }}>
-            Sign Out ({state.email})
-          </button>
-        </div>
-        {state.lockStatusLoading ? <p className="muted">Checking lock status from Supabase...</p> : null}
-        <div className="analytics-legend">
+    <>
+      <PageTopBar email={state.email} onSignOut={state.signOut} />
+      <main ref={pageRef} className="page-shell">
+      <div className="page-heading">
+        <h1>Analytics</h1>
+        <div className="analytics-legend" style={{ marginTop: "0.5rem" }}>
           <span className="analytics-legend-item">
             <span className="analytics-swatch analytics-swatch-profit" />
-            Green row = Profit or Break-even
+            Green = Profit or Break-even
           </span>
           <span className="analytics-legend-item">
             <span className="analytics-swatch analytics-swatch-loss" />
-            Red row = Loss
+            Red = Loss
           </span>
         </div>
-      </section>
+      </div>
 
       {state.error ? <UserErrorPanel title="Analytics Is Temporarily Unavailable" message={state.error} /> : null}
 
@@ -94,5 +85,6 @@ export default function AnalyticsPage() {
         />
       ) : null}
     </main>
+    </>
   );
 }

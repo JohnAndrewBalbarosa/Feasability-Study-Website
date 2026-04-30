@@ -38,6 +38,7 @@ type Props = {
   onUpdateCostRow: (id: string, field: keyof CostRow, value: string) => void;
   onAddCostRow: () => void;
   onRemoveCostRow: (id: string) => void;
+  onStartNew?: () => void;
 };
 
 export default function BusinessAnalysisStepSection(props: Props) {
@@ -82,6 +83,7 @@ export default function BusinessAnalysisStepSection(props: Props) {
           step8ProfitDisplay={props.step8ProfitDisplay}
           materialProcurementRecommendations={props.materialProcurementRecommendations}
           saveStatus={props.saveStatus}
+          onStartNew={props.onStartNew}
         />
       );
     default:
