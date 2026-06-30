@@ -127,3 +127,44 @@ components/
       ├── materials/                  Materials workspace
       └── LogsWorkspace.tsx           Logs workspace
 ```
+
+## Architecture (UML)
+
+```mermaid
+graph TD
+    User["👤 User Browser"]
+    Login["🔐 Google Login<br/>(Supabase Auth)"]
+    Frontend["⚛️ React Components<br/>(Next.js 14)"]
+    
+    subgraph "Next.js App (Vercel)"
+        RouteHandlers["🛣️ Route Handlers<br/>(/api/forecast,<br/>/api/pipeline/run)"]
+        BreakEven["📊 Break-Even<br/>Calculator<br/>(Client-side)"]
+        ProcEngine["🏭 Procurement<br/>Engine<br/>(Deterministic)"]
+        ProdEngine["⚙️ Production<br/>Engine<br/>(Deterministic)"]
+    end
+    
+    subgraph "Backend Services"
+        Supabase["🗄️ Supabase<br/>(PostgreSQL +<br/>Google OAuth)"]
+        AIForecast["🤖 AI Forecast<br/>Service"]
+    end
+    
+    Animations["✨ GSAP<br/>Animations"]
+    
+    User -->|Login| Login
+    Login -->|Auth Token| Supabase
+    Login -->|Authorized| Frontend
+    
+    Frontend -->|Interact| BreakEven
+    BreakEven -->|Cache in SessionStorage| Frontend
+    Frontend -->|Fetch Forecast| RouteHandlers
+    RouteHandlers -->|Call| AIForecast
+    AIForecast -->|Forecast Data| RouteHandlers
+    
+    RouteHandlers -->|Calculate| ProcEngine
+    ProcEngine -->|Calculate| ProdEngine
+    ProdEngine -->|Save + Audit Log| Supabase
+    
+    Frontend -->|Animate| Animations
+    Frontend -->|Query Analytics| Supabase
+    Supabase -->|Return Records| Frontend
+```
