@@ -1,170 +1,70 @@
-# N.E.W Procurement Intelligence
+# Feasability-Study-Website
 
-A private business analysis tool for N.E.W organization staff. Tracks daily sales, calculates break-even, generates procurement recommendations, and stores history.
+## Overview
 
-Access is restricted to authorized Google accounts only.
+A website for a group of student's feasibility study
 
----
+Repository: [JohnAndrewBalbarosa/Feasability-Study-Website](https://github.com/JohnAndrewBalbarosa/Feasability-Study-Website)
 
-## What It Does
+## Problem and Goal
 
-- **8-step daily workflow**: enter costs and products once, then come back each day to enter sales and run the analysis
-- **Break-even calculation**: automatically figures out how many units need to be sold to cover all costs
-- **AI-assisted forecast**: generates low / expected / high demand estimates before procurement decisions
-- **Procurement and production planning**: derives what to order and how much to produce from the forecast
-- **Saves finalized records** to Supabase with full audit logging (every save and delete is tracked)
-- **Analytics page**: shows historical records so trends can be tracked over time
-- **Lock mode**: prevents accidental edits to setup data (Steps 1–2 and the Materials page) while entering daily numbers
+This project should be read as a technical build: it identifies a concrete workflow or research problem, implements a working system around that problem, and documents enough evidence for another person to understand, run, and evaluate the result.
 
----
+Primary goals:
 
-## Tech Stack
+- Explain what the project does and who it is for.
+- Show the architecture and implementation choices.
+- Provide enough setup guidance for local review.
+- Report measured results when available.
+- Make limitations and next steps explicit instead of implying unverified impact.
 
-| Layer | Technology |
-|-------|-----------|
-| Frontend | Next.js 14 (App Router) + TypeScript + React 18 |
-| Backend | Next.js Route Handlers |
-| Database | Supabase (Postgres + Auth) |
-| Hosting | Vercel |
-| Animations | GSAP |
+## System Design
 
----
+Current documented components:
 
-## Setup
+- Automated tests or validation examples.
 
-### 1. Install dependencies
+Project tags:
+
+- To be tagged based on the final project stack.
+
+## Setup and Usage
+
+Use the commands below as the starting point for local setup. Verify environment variables, secrets, datasets, and external services before running production-like workflows.
 
 ```bash
 npm install
-```
-
-### 2. Create `.env.local`
-
-```env
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
-ALLOWED_GOOGLE_EMAILS=user@example.com,other@example.com
-```
-
-`ALLOWED_GOOGLE_EMAILS` is a comma-separated list. Only these accounts can log in.
-
-### 3. Run the database schema
-
-In your Supabase SQL editor, run:
-
-```
-supabase/schema.sql
-```
-
-### 4. Start local development
-
-```bash
 npm run dev
 ```
 
----
+## Evaluation Method
 
-## Access Control
+- Define the project task and expected behavior.
+- Run representative examples or user flows.
+- Record correctness, speed, reliability, usability, and failure cases.
 
-- Login at `/login` using Google OAuth (via Supabase Auth)
-- Only accounts in `ALLOWED_GOOGLE_EMAILS` can access the app
-- Unauthorized accounts are shown an error and redirected back to login
+## Results
 
----
+- No validated quantitative results are published yet.
+- Current README status: implementation and usage are documented before formal measurement.
 
-## Data Pipeline
+## Interpretation
 
-```
-User inputs (frontend)
-  → Break-even calculation (client-side, cached in sessionStorage)
-  → AI Forecast request  (/api/forecast)
-  → Procurement Engine   (server-side, deterministic)
-  → Production Engine    (server-side, deterministic)
-  → Save + Audit Log     (/api/pipeline/run → Supabase)
-```
+- The project can be described as implemented or in progress, but impact claims should stay limited until measurements are collected.
+- Use the evaluation plan below to turn the project into resume-ready, evidence-backed work.
 
-Only finalized payloads are written to the database. The pipeline requires:
-- Break-even metrics
-- Cost model
-- Forecast result
-- Procurement decisions
+## Limitations
 
----
+- Results should only be treated as validated when this README includes the dataset, sample size, metric definition, and reproduction steps.
+- Any AI-generated, OCR-based, scraped, or heuristic output requires manual review before being used as ground truth.
+- Environment-dependent measurements such as latency, memory use, browser behavior, and API reliability should be re-measured on the target machine.
 
-## Caching
+## Recommendations and Future Work
 
-Break-even is computed client-side and cached in `sessionStorage`. The cache key is based on fixed cost, variable cost per unit, and selling price. The cache is invalidated when a record is saved.
+- Forecast error against known sample data.
+- Break-even calculation accuracy.
+- Number of procurement scenarios tested.
 
----
+## Documentation Standard
 
-## Deployment
-
-1. Push to GitHub
-2. Connect the repo to [Vercel](https://vercel.com)
-3. Add the same environment variables from `.env.local` in the Vercel dashboard
-4. Deploy
-
----
-
-## Project Structure
-
-```
-app/                    Next.js pages (App Router)
-  ├── page.tsx          Business analysis workspace (home)
-  ├── analytics/        Historical records view
-  ├── materials/        Material requirements setup
-  ├── logs/             Audit log viewer
-  ├── guide/            Plain-language user guide
-  ├── about/            Technical project overview
-  └── api/              Route handlers (forecast, pipeline, auth, etc.)
-
-components/
-  ├── SharedPageHeader.tsx            Shared nav used across all pages
-  └── workspaces/
-      ├── business-analysis/          8-step analysis wizard
-      ├── analytics/                  Analytics workspace
-      ├── materials/                  Materials workspace
-      └── LogsWorkspace.tsx           Logs workspace
-```
-
-## Architecture (UML)
-
-```mermaid
-graph TD
-    User["👤 User Browser"]
-    Login["🔐 Google Login<br/>(Supabase Auth)"]
-    Frontend["⚛️ React Components<br/>(Next.js 14)"]
-    
-    subgraph "Next.js App (Vercel)"
-        RouteHandlers["🛣️ Route Handlers<br/>(/api/forecast,<br/>/api/pipeline/run)"]
-        BreakEven["📊 Break-Even<br/>Calculator<br/>(Client-side)"]
-        ProcEngine["🏭 Procurement<br/>Engine<br/>(Deterministic)"]
-        ProdEngine["⚙️ Production<br/>Engine<br/>(Deterministic)"]
-    end
-    
-    subgraph "Backend Services"
-        Supabase["🗄️ Supabase<br/>(PostgreSQL +<br/>Google OAuth)"]
-        AIForecast["🤖 AI Forecast<br/>Service"]
-    end
-    
-    Animations["✨ GSAP<br/>Animations"]
-    
-    User -->|Login| Login
-    Login -->|Auth Token| Supabase
-    Login -->|Authorized| Frontend
-    
-    Frontend -->|Interact| BreakEven
-    BreakEven -->|Cache in SessionStorage| Frontend
-    Frontend -->|Fetch Forecast| RouteHandlers
-    RouteHandlers -->|Call| AIForecast
-    AIForecast -->|Forecast Data| RouteHandlers
-    
-    RouteHandlers -->|Calculate| ProcEngine
-    ProcEngine -->|Calculate| ProdEngine
-    ProdEngine -->|Save + Audit Log| Supabase
-    
-    Frontend -->|Animate| Animations
-    Frontend -->|Query Analytics| Supabase
-    Supabase -->|Return Records| Frontend
-```
+This README follows a technical-project structure: overview, goal, system design, setup, evaluation method, results, interpretation, limitations, and recommendations. Update the Results section whenever new measurements are available so project claims stay evidence-backed.
