@@ -8,33 +8,27 @@ Repository: [JohnAndrewBalbarosa/Feasability-Study-Website](https://github.com/J
 
 ## Problem and Goal
 
-This project should be read as a technical build: it identifies a concrete workflow or research problem, implements a working system around that problem, and documents enough evidence for another person to understand, run, and evaluate the result.
+**Problem.** A student feasibility-study team needs one place to compare procurement inputs, estimate break-even conditions, document assumptions, and control access to private analysis.
 
-Primary goals:
-
-- Explain what the project does and who it is for.
-- Show the architecture and implementation choices.
-- Provide enough setup guidance for local review.
-- Report measured results when available.
-- Make limitations and next steps explicit instead of implying unverified impact.
+**Goal.** Provide a web application for structured feasibility analysis, forecast ranges, stored evidence, and auditable team decisions.
 
 ## System Design
 
-Current documented components:
-
-- Automated tests or validation examples.
-
-Project tags:
-
-- To be tagged based on the final project stack.
+- `app/` + `components/`: Next.js routes and interface components.
+- `lib/` + `hooks/`: calculations, data access, and reusable client behavior.
+- `supabase/`: persistence/schema assets; `middleware.ts`: access control.
+- `tests/` + `vitest.config.ts`: automated validation.
 
 ## Setup and Usage
 
-Use the commands below as the starting point for local setup. Verify environment variables, secrets, datasets, and external services before running production-like workflows.
-
 ```bash
 npm install
+cp .env.example .env.local
 npm run dev
+
+# Validation
+npm test
+npm run build
 ```
 
 ## Evaluation Method
